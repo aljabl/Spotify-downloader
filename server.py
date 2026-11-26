@@ -74,7 +74,7 @@ def safe_name(value):
 def filename(track, extension):
     title = safe_name(track["title"])
     artist = safe_name(track["artist"])
-    return f"{title} ({artist}).{extension}"
+    return f"{title} ({artist}).{'m4a' if extension == 'alac' else extension}"
 
 
 def spotify_metadata(item):
@@ -86,24 +86,60 @@ def spotify_metadata(item):
             "artist_id": artists[0].get("id") if artists else None}
 
 
-def write_wav_metadata(path, track):
-    tags = {"title": track.get("title"), "artist": track.get("artist"),
-            "album": track.get("album"), "date": track.get("release_date"),
-            "genre": track.get("genre"), "track": track.get("track_number")}
-    temp = path.with_name(f".{path.stem}.{secrets.token_hex(6)}.wav")
+def write_audio_metadata(path, track):
+    temp = path.with_name(f".{path.stem}.{secrets.token_hex(6)}{path.suffix}")
     command = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
                "-i", str(path), "-map", "0:a:0", "-c:a", "copy", "-map_metadata", "-1"]
-    for key, value in tags.items():
-        if value is not None and value != "":
-            command.extend(["-metadata", f"{key}={value}"])
-    command.extend(["-f", "wav", str(temp)])
+    command.extend(metadata_options(track))
+    command.extend(["-f", "ipod" if path.suffix == ".m4a" else "wav", str(temp)])
     try:
         result = subprocess.run(command, capture_output=True, text=True, check=False)
         if result.returncode or not temp.exists() or not temp.stat().st_size:
-            raise ValueError("Could not write WAV metadata: " + (result.stderr.strip()[-250:] or "FFmpeg failed."))
+            raise ValueError("Could not write audio metadata: " + (result.stderr.strip()[-250:] or "FFmpeg failed."))
         temp.replace(path)
     finally:
         temp.unlink(missing_ok=True)
+
+
+def write_wav_metadata(path, track):
+    write_audio_metadata(path, track)
+
+
+def write_alac_metadata(path, track):
+    write_audio_metadata(path, track)
+
+
+def metadata_options(track):
+    tags = {"title": track.get("title"), "artist": track.get("artist"),
+            "album": track.get("album"), "date": track.get("release_date"),
+            "genre": track.get("genre"), "track": track.get("track_number")}
+    options = []
+    for key, value in tags.items():
+        if value is not None and value != "":
+            options.extend(["-metadata", f"{key}={value}"])
+    return options
+
+
+def convert_to_alac(source, final, track):
+    temp = final.with_name(f".{final.stem}.{secrets.token_hex(6)}.m4a")
+    command = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+               "-i", str(source), "-map", "0:a:0", "-c:a", "alac", "-map_metadata", "-1"]
+    command.extend(metadata_options(track))
+    command.extend(["-f", "ipod", str(temp)])
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode or not temp.exists() or not temp.stat().st_size:
+            raise ValueError("Could not create ALAC audio: " + (result.stderr.strip()[-250:] or "FFmpeg failed."))
+        temp.replace(final)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def audio_codec(path):
+    result = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0",
+                             "-show_entries", "stream=codec_name", "-of", "default=nw=1:nk=1", str(path)],
+                            capture_output=True, text=True, check=False)
+    return result.stdout.strip() if result.returncode == 0 else ""
 
 
 def normalize(value):
@@ -313,8 +349,8 @@ class App:
         if type(url) is not str:
             raise ValueError("Paste a YouTube video link.")
         selected = video_id(url)
-        if extension not in ("mp3", "wav"):
-            raise ValueError("Choose MP3 or WAV.")
+        if extension not in ("mp3", "wav", "alac"):
+            raise ValueError("Choose MP3, WAV, or ALAC.")
         if any(type(value) is not str or len(value) > 200 for value in (title, artist)):
             raise ValueError("Title and artist must be text under 200 characters.")
         with self.lock:
@@ -401,7 +437,7 @@ class App:
                     self.save()
 
     def run_job(self, kind, target):
-        if kind in ("wav", "tag"):
+        if kind in ("wav", "alac", "tag"):
             with self.lock:
                 self.job["current"] = "Reading Spotify metadata"
             self.enrich_metadata(target)
@@ -450,7 +486,7 @@ class App:
                         self.tracks[index]["error"] = detail[:300]
                     self.job["errors"].append(self.job["current"] + ": " + detail[:150])
                     self.save()
-                if kind in ("wav", "mp3"):
+                if kind in ("wav", "mp3", "alac"):
                     unavailable_in_row = unavailable_in_row + 1 if "Requested format is not available" in detail else 0
             with self.lock:
                 self.job["done"] += 1
@@ -521,14 +557,37 @@ def download_track(track, extension):
     if final.exists() and final.stat().st_size > 0:
         if extension == "wav":
             write_wav_metadata(final, track)
+        elif extension == "alac":
+            if audio_codec(final) == "alac":
+                write_alac_metadata(final, track)
+            else:
+                convert_to_alac(final, final, track)
         return
     stem = f'{safe_name(track["title"])} ({safe_name(track["artist"])})'.replace("%", "%%")
+    if extension == "alac":
+        template = str(OUTPUT / (f".{stem}.{secrets.token_hex(6)}.source.%(ext)s"))
+        opts = {"format": "bestaudio/best", "outtmpl": template, "noplaylist": True,
+                "quiet": True, "no_warnings": True, "overwrites": False,
+                "js_runtimes": {"deno": {}, "node": {}}}
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info("https://www.youtube.com/watch?v=" + selected, download=True)
+        source_name = info.get("filepath") if info else None
+        if not source_name:
+            raise ValueError("The source audio file was not created.")
+        source = Path(source_name)
+        if source.resolve().parent != OUTPUT.resolve() or not source.is_file():
+            raise ValueError("The source audio file was not created in the output folder.")
+        try:
+            convert_to_alac(source, final, track)
+        finally:
+            source.unlink(missing_ok=True)
+        return
     template = str(OUTPUT / (stem + ".%(ext)s"))
     opts = {"format": "bestaudio/best", "outtmpl": template, "noplaylist": True,
             "quiet": True, "no_warnings": True, "overwrites": False,
             "js_runtimes": {"deno": {}, "node": {}},
             "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": extension,
-                                "preferredquality": "192" if extension == "mp3" else "0"}]}
+                                **({"preferredquality": "192"} if extension == "mp3" else {})}]}
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download(["https://www.youtube.com/watch?v=" + selected])
     if not final.exists():
@@ -658,11 +717,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.json_response({"ok": True})
             elif path == "/api/download":
                 extension = data.get("format")
-                if extension not in ("mp3", "wav"):
-                    raise ValueError("Choose MP3 or WAV.")
+                if extension not in ("mp3", "wav", "alac"):
+                    raise ValueError("Choose MP3, WAV, or ALAC.")
                 with APP.lock:
                     target = [i for i, t in enumerate(APP.tracks) if t.get("selected") and not t.get("ignored") and
-                              (extension == "wav" or not (OUTPUT / filename(t, extension)).exists())]
+                              (extension in ("wav", "alac") or not (OUTPUT / filename(t, extension)).exists())]
                 APP.begin_job(extension, target)
                 self.json_response({"count": len(target)})
             elif path == "/api/one-off":

@@ -8,7 +8,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from server import App, download_track, filename, match_score, playlist_id, safe_name, spotify_metadata, video_id, write_wav_metadata, youtube_video_track
+from server import App, convert_to_alac, download_track, filename, match_score, playlist_id, safe_name, spotify_metadata, video_id, write_alac_metadata, write_wav_metadata, youtube_video_track
 
 
 @contextmanager
@@ -46,6 +46,25 @@ class CoreTests(unittest.TestCase):
                                "date": "2020-03", "genre": "Pop", "track": "7"}.items():
                 self.assertEqual(tags[key], value)
 
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg tools required")
+    def test_alac_codec_and_metadata_are_readable(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "source.m4a"
+            path = Path(directory) / "song.m4a"
+            subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+                            "sine=frequency=440:duration=0.1", "-c:a", "aac", str(source)], check=True)
+            tags = {"title": "A Song", "artist": "An Artist", "album": "An Album",
+                    "release_date": "2020-03", "genre": "Pop", "track_number": 7}
+            convert_to_alac(source, path, tags)
+            write_alac_metadata(path, tags)
+            result = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags:stream=codec_name",
+                                     "-of", "json", str(path)], capture_output=True, text=True, check=True)
+            details = json.loads(result.stdout)
+            self.assertEqual(details["streams"][0]["codec_name"], "alac")
+            for key, value in {"title": "A Song", "artist": "An Artist", "album": "An Album",
+                               "date": "2020-03", "genre": "Pop", "track": "7"}.items():
+                self.assertEqual(details["format"]["tags"][key], value)
+
     def test_existing_tracks_can_gain_album_and_artist_genre(self):
         with isolated_app() as app:
             track = sample_track()
@@ -71,6 +90,47 @@ class CoreTests(unittest.TestCase):
                 download_track(track, "wav")
             tag.assert_called_once_with(path, track)
             youtube.assert_not_called()
+
+    def test_alac_filename_and_existing_file_metadata(self):
+        with isolated_app():
+            track = dict(sample_track(), selected="YE7VzlLtp-4")
+            path = server.OUTPUT / filename(track, "alac")
+            self.assertEqual(path.suffix, ".m4a")
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b"existing alac")
+            with patch("server.audio_codec", return_value="alac"), patch("server.write_alac_metadata") as tag, patch("yt_dlp.YoutubeDL") as youtube:
+                download_track(track, "alac")
+            tag.assert_called_once_with(path, track)
+            youtube.assert_not_called()
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg tools required")
+    def test_existing_aac_m4a_is_converted_to_alac(self):
+        with isolated_app():
+            track = dict(sample_track(), selected="YE7VzlLtp-4")
+            path = server.OUTPUT / filename(track, "alac")
+            path.parent.mkdir(parents=True)
+            subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+                            "sine=frequency=440:duration=0.1", "-c:a", "aac", str(path)], check=True)
+            with patch("yt_dlp.YoutubeDL") as youtube:
+                download_track(track, "alac")
+            youtube.assert_not_called()
+            self.assertEqual(server.audio_codec(path), "alac")
+
+    def test_alac_download_converts_source_and_removes_it(self):
+        with isolated_app():
+            track = dict(sample_track(), selected="YE7VzlLtp-4")
+            path = server.OUTPUT / filename(track, "alac")
+            source = server.OUTPUT / ".source.m4a"
+            with patch("server.convert_to_alac") as convert, patch("yt_dlp.YoutubeDL") as youtube:
+                source.parent.mkdir(parents=True, exist_ok=True)
+                source.write_bytes(b"compressed source")
+                youtube.return_value.__enter__.return_value.extract_info.return_value = {"filepath": str(source)}
+                download_track(track, "alac")
+            options = youtube.call_args.args[0]
+            self.assertNotIn("postprocessors", options)
+            self.assertEqual(path.suffix, ".m4a")
+            convert.assert_called_once_with(source, path, track)
+            self.assertFalse(source.exists())
 
     def test_repeated_unavailable_formats_stop_download_job(self):
         with isolated_app() as app:
@@ -149,6 +209,12 @@ class CoreTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     app.start_one_off(url, format)
             self.assertEqual(app.one_off["status"], "idle")
+
+    def test_one_off_accepts_alac(self):
+        with isolated_app() as app, patch("server.threading.Thread") as thread:
+            app.start_one_off("https://youtu.be/YE7VzlLtp-4", "alac")
+            thread.return_value.start.assert_called_once()
+            self.assertEqual(app.one_off["status"], "working")
 
     def test_output_name_cannot_escape_folder(self):
         track = {"title": "../Track: 100%", "artist": "A/B"}
