@@ -142,6 +142,7 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(app.job["done"], 3)
             self.assertTrue(app.job["paused"])
             self.assertEqual(app.tracks[3]["status"], "matched")
+            self.assertEqual(app.job["last_result"]["status"], "error")
 
     def test_tag_job_does_not_download_from_youtube(self):
         with isolated_app() as app:
@@ -325,6 +326,7 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(app.tracks[0]["status"], "matched")
             self.assertEqual(app.tracks[1]["status"], "downloaded")
             self.assertEqual((app.job["done"], app.job["total"]), (1, 1))
+            self.assertEqual(app.job["last_result"], {"sequence": 1, "title": "Second — Artist", "status": "success"})
 
     def test_manual_link_wins_over_search_in_progress(self):
         with isolated_app() as app:

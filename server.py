@@ -179,8 +179,8 @@ class App:
         self.tracks = []
         self.revision = 0
         self.pause_requested = False
-        self.job = {"kind": None, "running": False, "paused": False, "pausing": False,
-                    "current": "", "done": 0, "total": 0, "errors": []}
+        self.job = {"id": None, "kind": None, "running": False, "paused": False, "pausing": False,
+                    "current": "", "done": 0, "total": 0, "errors": [], "last_result": None}
         self.one_off = {"status": "idle", "filename": "", "error": ""}
         if STATE_FILE.exists():
             try:
@@ -332,8 +332,9 @@ class App:
             if self.job["running"]:
                 raise ValueError("Wait for the current job to finish.")
             self.pause_requested = False
-            self.job = {"kind": kind, "running": bool(target), "paused": False, "pausing": False,
-                        "current": "", "done": 0, "total": len(target), "errors": []}
+            self.job = {"id": secrets.token_hex(6), "kind": kind, "running": bool(target),
+                        "paused": False, "pausing": False, "current": "", "done": 0,
+                        "total": len(target), "errors": [], "last_result": None}
         if not target:
             return
         threading.Thread(target=self.run_job, args=(kind, target), daemon=True).start()
@@ -452,6 +453,7 @@ class App:
                     continue
                 track = dict(self.tracks[index])
                 self.job["current"] = f'{track["title"]} — {track["artist"]}'
+            outcome = "success"
             try:
                 if kind == "match":
                     candidates = search_youtube(track)
@@ -479,6 +481,7 @@ class App:
                         self.tracks[index]["error"] = ""
                         self.save()
             except Exception as error:
+                outcome = "error"
                 detail = re.sub(r"\x1b\[[0-9;]*m", "", str(error))
                 with self.lock:
                     if not self.tracks[index].get("ignored") and (kind != "match" or not self.tracks[index].get("selected")):
@@ -490,6 +493,9 @@ class App:
                     unavailable_in_row = unavailable_in_row + 1 if "Requested format is not available" in detail else 0
             with self.lock:
                 self.job["done"] += 1
+                self.job["last_result"] = {"sequence": self.job["done"],
+                                           "title": f'{track["title"]} — {track["artist"]}',
+                                           "status": outcome}
                 if unavailable_in_row >= 3:
                     self.job["paused"] = True
                     self.job["errors"].append("YouTube returned no audio formats for three songs in a row. "

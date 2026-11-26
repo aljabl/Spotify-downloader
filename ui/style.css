@@ -54,6 +54,15 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
 .notice { margin: 20px 4px 0 0; padding: 16px 20px; border-radius: 20px; background: var(--orange); box-shadow: var(--shadow); line-height: 1.5; }
 .notice.error { background: var(--cream); border: 3px solid var(--red); }
 .job { margin: 24px 0 15px; padding: 16px 18px; border-radius: 18px; background: var(--cream); box-shadow: 3px 3px 0 var(--purple); line-height: 1.5; white-space: pre-line; }
+.progress-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.progress-row + .progress-row { margin-top: 12px; }
+.progress-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.progress-icon { display: grid; flex: none; place-items: center; width: 27px; height: 27px; border-radius: 50%; font-size: 19px; font-weight: 700; }
+.progress-icon.loading { border: 3px solid #47406e55; border-top-color: var(--purple); animation: progress-spin .8s linear infinite; }
+.progress-icon.success { background: #198754; color: white; }
+.progress-icon.error { background: var(--red); color: white; }
+@keyframes progress-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .progress-icon.loading { animation: none; border-style: dotted; } }
 .tracks { margin-top: 23px; }
 .track { padding: 21px 0; border-top: 2px solid #47406e55; }
 .track-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }

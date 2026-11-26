@@ -5,6 +5,10 @@ let shown = 100;
 let lastRevision = -1;
 const manualDrafts = new Map();
 const candidateDrafts = new Map();
+let lastJobId = null;
+let lastResultSequence = 0;
+let resultFlash = null;
+let resultTimer = null;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -23,6 +27,18 @@ async function action(path, data, success, busy = '') {
   catch (error) { message(error.message, true); return false; }
 }
 function statusLabel(status) { return ({pending:'Not searched',needs_review:'Needs review',matched:'Matched',downloaded:'Downloaded',error:'Error',ignored:'Ignored'})[status] || status; }
+function progressRow(text, icon) {
+  const row = document.createElement('div');
+  row.className = 'progress-row';
+  const label = document.createElement('span');
+  label.textContent = text;
+  const symbol = document.createElement('span');
+  symbol.className = `progress-icon ${icon}`;
+  symbol.setAttribute('aria-hidden', 'true');
+  symbol.textContent = icon === 'success' ? '✓' : icon === 'error' ? '!' : '';
+  row.append(label, symbol);
+  return row;
+}
 
 function render() {
   if (!state) return;
@@ -33,6 +49,20 @@ function render() {
   $('folder').textContent = `Output folder: ${state.output_dir}`;
   const job = state.job;
   const oneOff = state.one_off || {status:'idle'};
+  if (job.id !== lastJobId) {
+    lastJobId = job.id;
+    lastResultSequence = 0;
+    resultFlash = null;
+    clearTimeout(resultTimer);
+  }
+  if (job.last_result && job.last_result.sequence !== lastResultSequence) {
+    lastResultSequence = job.last_result.sequence;
+    if (job.kind !== 'match') {
+      resultFlash = job.last_result;
+      clearTimeout(resultTimer);
+      resultTimer = setTimeout(() => { resultFlash = null; render(); }, 900);
+    }
+  }
   $('one-off-submit').disabled = oneOff.status === 'working' || oneOff.status === 'downloading';
   const oneOffText = oneOff.status === 'working' ? 'Reading video details and downloading audio…' :
     oneOff.status === 'downloading' ? `Downloading ${oneOff.filename}…` :
@@ -52,11 +82,24 @@ function render() {
   const jobText = job.kind ? `${job.pausing ? 'Pausing' : job.running ? 'Working' : job.paused ? 'Paused' : 'Finished'} · ${job.kind === 'match' ? 'Finding YouTube matches' : job.kind === 'tag' ? 'Updating WAV tags' : `Downloading ${job.kind.toUpperCase()}`} · ${job.done}/${job.total}${job.current ? ` · ${job.current}` : ''}${job.errors.length ? ` · ${job.errors.length} errors` : ''}${stopReason ? ` · ${stopReason}` : ''}` : '';
   $('job').hidden = job.kind !== 'match';
   $('job').textContent = job.kind === 'match' ? jobText : '';
-  const oneOffProgress = oneOff.status === 'working' ? 'Working · Reading YouTube details for one-off download' :
-    oneOff.status === 'downloading' ? `Working · Downloading ${oneOff.filename}` : '';
-  const downloadProgress = [job.kind && job.kind !== 'match' ? jobText : '', oneOffProgress].filter(Boolean).join('\n');
-  $('download-job').textContent = downloadProgress;
-  $('download-job').hidden = !downloadProgress;
+  const rows = [];
+  if (job.kind && job.kind !== 'match') {
+    const resultText = resultFlash?.status === 'success' ? `${job.kind === 'tag' ? 'Updated tags' : 'Downloaded'} · ${resultFlash.title} · ${job.done}/${job.total}` :
+      resultFlash?.status === 'error' ? `Failed · ${resultFlash.title} · ${job.done}/${job.total}` : jobText;
+    const icon = resultFlash ? resultFlash.status : job.running ? 'loading' : job.errors.length ? 'error' : 'success';
+    rows.push(progressRow(resultText, icon));
+  }
+  const oneOffProgress = oneOff.status === 'working' ? 'Reading YouTube details for one-off download' :
+    oneOff.status === 'downloading' ? `Downloading ${oneOff.filename}` :
+    oneOff.status === 'done' ? `Saved ${oneOff.filename}` :
+    oneOff.status === 'existing' ? `${oneOff.filename} is already saved` :
+    oneOff.status === 'error' ? `One-off download failed: ${oneOff.error}` : '';
+  if (oneOffProgress) {
+    const icon = ['working', 'downloading'].includes(oneOff.status) ? 'loading' : oneOff.status === 'error' ? 'error' : 'success';
+    rows.push(progressRow(oneOffProgress, icon));
+  }
+  $('download-job').replaceChildren(...rows);
+  $('download-job').hidden = !rows.length;
   const q = $('filter').value.trim().toLowerCase();
   const filter = $('status-filter').value;
   const found = state.tracks.map((track,index) => ({track,index})).filter(({track}) =>
