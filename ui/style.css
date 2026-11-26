@@ -20,15 +20,12 @@ body { margin: 0; background: var(--cream); }
 .brand { display: flex; align-items: center; gap: 11px; font: 900 20px Lato, Arial, sans-serif; }
 .mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--orange); color: var(--purple); font: 900 25px Lato, Arial, sans-serif; }
 .local { font-size: 14px; font-weight: 700; }
-.eyebrow { color: var(--deep-blue); font: 900 14px Lato, Arial, sans-serif; letter-spacing: .1em; }
-.hero { padding: 65px 0 42px; }
-.hero h1 { display: inline-block; margin: 16px 0 20px; padding: 21px 30px 27px; border-radius: 32px; background: var(--purple); color: var(--cream); font: 900 clamp(50px, 8vw, 95px)/.96 Lato, Arial, sans-serif; letter-spacing: -.055em; }
-.hero em { color: var(--orange); font-style: normal; }
-.hero p { max-width: 730px; margin: 0; font-size: 19px; line-height: 1.5; }
+.hero { padding: 50px 0 28px; }
+.hero h1 { max-width: 850px; margin: 0 0 16px; color: var(--purple); font: 900 clamp(42px, 5vw, 63px)/1.05 Lato, Arial, sans-serif; letter-spacing: -.035em; }
+.hero p { max-width: 730px; margin: 0; font-size: 18px; line-height: 1.5; }
 .card { margin: 18px 4px 24px 0; padding: 30px; border-radius: 32px; background: var(--blue); box-shadow: var(--shadow); }
-.step { display: flex; gap: 20px; align-items: flex-start; }
-.step > span { display: grid; place-items: center; flex: 0 0 36px; height: 32px; border-radius: 8px; background: var(--deep-blue); color: var(--cream); box-shadow: 2px 2px 0 var(--purple); font-size: 14px; font-weight: 700; }
-.step h2 { margin: 0 0 7px; font: 900 29px/1.1 Lato, Arial, sans-serif; }
+.step { display: block; }
+.step h2 { margin: 0 0 7px; font: 900 27px/1.1 Lato, Arial, sans-serif; }
 .step p { margin: 0; font-size: 16px; line-height: 1.5; }
 .row, .input-row, .track-actions { display: flex; align-items: center; gap: 13px; flex-wrap: wrap; margin: 24px 0 0; }
 .input-row input { flex: 1; min-width: 240px; }
@@ -69,4 +66,4 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
 .empty { padding: 20px 0; font-size: 16px; }
 footer { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 45px; padding: 25px 0 50px; border-top: 2px solid var(--purple); font-size: 14px; }
 footer a { color: var(--purple); font-weight: 700; }
-@media (max-width: 650px) { .shell { width: calc(100% - 28px); } .topbar { margin-top: 14px; padding: 12px 16px; } .brand { font-size: 17px; } .hero { padding: 46px 0 30px; } .hero h1 { padding: 18px 21px 23px; font-size: clamp(42px, 11vw, 68px); } .hero p { font-size: 17px; } .card { padding: 22px; } .row > * { width: 100%; } #filter { margin-left: 0; } .track-heading { display: block; } .badge { margin-top: 11px; } .step { gap: 13px; } .step h2 { font-size: 24px; } }
+@media (max-width: 650px) { .shell { width: calc(100% - 28px); } .topbar { margin-top: 14px; padding: 12px 16px; } .brand { font-size: 17px; } .hero { padding: 42px 0 25px; } .hero h1 { font-size: 40px; } .hero p { font-size: 17px; } .card { padding: 22px; } .row > * { width: 100%; } #filter { margin-left: 0; } .track-heading { display: block; } .badge { margin-top: 11px; } .step h2 { font-size: 24px; } }

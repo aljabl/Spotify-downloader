@@ -24,36 +24,18 @@ a:focus-visible { outline: 3px solid var(--red); outline-offset: 4px; }
 .mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: var(--purple); background: var(--orange); font: 900 25px Lato, Arial, sans-serif; }
 .github { color: var(--cream); text-decoration: none; font-weight: 700; }
 .github:hover, footer a:hover, .text-link:hover { text-decoration: underline; }
-.hero { padding: 70px 0 58px; }
-.eyebrow { color: var(--deep-blue); font-family: Lato, Arial, sans-serif; font-size: 14px; font-weight: 900; letter-spacing: .1em; }
-.pulse { display: inline-block; width: 10px; height: 10px; margin-right: 7px; border-radius: 50%; background: var(--red); }
-.hero h1 { display: inline-block; max-width: 900px; margin: 20px 0 24px; padding: 23px 34px 29px; border-radius: 32px; background: var(--purple); color: var(--cream); font: 900 clamp(54px, 8vw, 105px)/.96 Lato, Arial, sans-serif; letter-spacing: -.055em; }
-.hero em { color: var(--orange); font-style: normal; }
-.hero p { max-width: 720px; margin: 0; font-size: 20px; line-height: 1.55; }
+.hero { padding: 62px 0 45px; }
+.hero h1 { max-width: 900px; margin: 0 0 22px; color: var(--purple); font: 900 clamp(42px, 5vw, 65px)/1.05 Lato, Arial, sans-serif; letter-spacing: -.035em; }
+.hero p { max-width: 720px; margin: 0; font-size: 18px; line-height: 1.55; }
 .hero-actions { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; margin: 29px 0 20px; }
 .button { display: inline-flex; align-items: center; justify-content: center; gap: 25px; min-height: 52px; padding: 11px 25px; border-radius: 38px; background: var(--orange); color: var(--purple); box-shadow: var(--shadow); font-size: 16px; font-weight: 700; text-decoration: none; }
 .button:hover { background: #ffc380; transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--purple); }
 .text-link { color: var(--purple); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
-.hero-note { font-size: 14px; }
-.preview { max-width: 850px; margin: 0 0 100px auto; overflow: hidden; border-radius: 32px; background: var(--blue); box-shadow: var(--shadow); }
-.preview-head { display: flex; align-items: center; gap: 8px; padding: 17px 23px; background: var(--purple); color: var(--cream); }
-.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--orange); }
-.dot:nth-child(2) { background: var(--red); }
-.dot:nth-child(3) { background: var(--blue); }
-.preview-title { margin-left: 12px; font-family: Lato, Arial, sans-serif; font-weight: 900; }
-.preview-local { margin-left: auto; font-size: 13px; font-weight: 700; }
-.preview-body { padding: 24px 30px 30px; }
-.preview-line { display: flex; align-items: center; gap: 18px; padding: 15px 5px; border-bottom: 1px solid #47406e66; font-size: 17px; }
-.preview-index { display: grid; place-items: center; min-width: 34px; height: 30px; border-radius: 8px; background: var(--deep-blue); color: var(--cream); font-size: 13px; font-weight: 700; box-shadow: 2px 2px 0 var(--purple); }
-.check, .pill { margin-left: auto; }
-.pill { padding: 7px 12px; border-radius: 20px; background: var(--cream); font-size: 13px; font-weight: 700; }
-.preview-download { display: inline-block; margin-top: 24px; padding: 12px 18px; border-radius: 38px; background: var(--red); color: var(--cream); box-shadow: var(--shadow); font-weight: 700; }
-.section { padding: 25px 0 90px; }
-.section h2, .install h2, .fineprint h2 { margin: 14px 0 32px; font: 900 clamp(38px, 5vw, 62px)/1.05 Lato, Arial, sans-serif; letter-spacing: -.035em; }
-.steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 19px; }
-.steps article { min-height: 280px; padding: 25px; border-radius: 32px; background: var(--blue); box-shadow: var(--shadow); }
-.steps article > span { display: inline-grid; place-items: center; width: 34px; height: 30px; border-radius: 8px; background: var(--deep-blue); color: var(--cream); box-shadow: 2px 2px 0 var(--purple); font-size: 13px; font-weight: 700; }
-.steps h3 { margin: 38px 0 12px; font: 900 23px/1.15 Lato, Arial, sans-serif; }
+.section { padding: 20px 0 80px; }
+.section h2, .install h2, .fineprint h2 { margin: 0 0 28px; font: 900 clamp(32px, 4vw, 45px)/1.1 Lato, Arial, sans-serif; letter-spacing: -.025em; }
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 19px; }
+.steps article { padding: 25px; border-radius: 32px; background: var(--blue); box-shadow: var(--shadow); }
+.steps h3 { margin: 0 0 12px; font: 900 22px/1.15 Lato, Arial, sans-serif; }
 .steps p, .install p, .fineprint p { margin: 0; font-size: 16px; line-height: 1.5; }
 .install { display: grid; grid-template-columns: 1fr 1fr; gap: 45px; align-items: center; margin: 20px 0 85px; padding: 43px; border-radius: 32px; background: var(--blue); box-shadow: var(--shadow); }
 .install h2 { margin-bottom: 20px; }
@@ -68,5 +50,5 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 footer { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; padding: 25px 0 45px; border-top: 2px solid var(--purple); font-size: 14px; }
 footer div { display: flex; gap: 22px; }
 footer a { font-weight: 700; text-decoration: none; }
-@media (max-width: 900px) { .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } .steps article { min-height: 0; } .install { grid-template-columns: 1fr; } .preview { margin-bottom: 80px; } }
-@media (max-width: 600px) { .shell { width: calc(100% - 28px); } .topbar { padding: 12px 16px; } .brand { font-size: 17px; } .github { font-size: 14px; } .hero { padding: 45px 0; } .hero h1 { padding: 19px 22px 24px; font-size: clamp(43px, 11vw, 66px); } .hero p { font-size: 17px; } .steps { grid-template-columns: 1fr; } .steps h3 { margin-top: 24px; } .install { padding: 25px; } .preview-local { display: none; } .preview-body { padding: 16px 20px 25px; } .preview-line { font-size: 15px; } .pill { font-size: 12px; } }
+@media (max-width: 900px) { .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } .install { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .shell { width: calc(100% - 28px); } .topbar { padding: 12px 16px; } .brand { font-size: 17px; } .github { font-size: 14px; } .hero { padding: 45px 0 35px; } .hero h1 { font-size: 40px; } .hero p { font-size: 17px; } .steps { grid-template-columns: 1fr; } .install { padding: 25px; } }
