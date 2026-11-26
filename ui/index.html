@@ -50,6 +50,7 @@
       <summary class="section-header"><h2>Download audio</h2></summary>
       <div class="section-content"><p>Files use the name <strong>song title (artist)</strong>. Playlist WAV and ALAC files include available Spotify title, artist, album, release date, track number, and genre tags.</p>
       <div class="row"><label class="format">Format <select id="format"><option value="mp3">MP3 · smaller files</option><option value="wav">WAV · larger files</option><option value="alac">ALAC (.m4a) · Apple Lossless</option></select></label><button id="download" class="button">Download selected matches</button><button id="tag-wav" class="button secondary">Update existing WAV tags</button></div>
+      <div id="download-job" class="job" role="status" hidden></div>
       <p id="folder" class="muted"></p><p class="small">Download only audio you have permission to save. YouTube availability and match quality can vary. Converting compressed audio to WAV or ALAC cannot add detail to the source.</p>
       </div>
     </details>

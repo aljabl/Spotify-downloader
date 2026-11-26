@@ -571,16 +571,15 @@ def download_track(track, extension):
                 "js_runtimes": {"deno": {}, "node": {}}}
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info("https://www.youtube.com/watch?v=" + selected, download=True)
-        source_name = info.get("filepath") if info else None
+        downloads = (info or {}).get("requested_downloads") or []
+        source_name = (downloads[0].get("filepath") if downloads else None) or (info or {}).get("filepath")
         if not source_name:
             raise ValueError("The source audio file was not created.")
         source = Path(source_name)
         if source.resolve().parent != OUTPUT.resolve() or not source.is_file():
             raise ValueError("The source audio file was not created in the output folder.")
-        try:
-            convert_to_alac(source, final, track)
-        finally:
-            source.unlink(missing_ok=True)
+        convert_to_alac(source, final, track)
+        source.unlink(missing_ok=True)
         return
     template = str(OUTPUT / (stem + ".%(ext)s"))
     opts = {"format": "bestaudio/best", "outtmpl": template, "noplaylist": True,

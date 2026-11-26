@@ -48,9 +48,15 @@ function render() {
   $('match').disabled = (!searching && !state.tracks.some(t => !t.ignored)) || job.pausing || (job.running && !searching);
   $('download').disabled = state.job.running || !state.tracks.some(t => t.selected && !t.ignored);
   $('tag-wav').disabled = state.job.running || !state.tracks.some(t => !t.ignored);
-  $('job').hidden = !job.kind;
   const stopReason = job.errors.find(error => error.startsWith('YouTube returned no audio formats'));
-  $('job').textContent = job.kind ? `${job.pausing ? 'Pausing' : job.running ? 'Working' : job.paused ? 'Paused' : 'Finished'} · ${job.kind === 'match' ? 'Finding YouTube matches' : job.kind === 'tag' ? 'Updating WAV tags' : `Downloading ${job.kind.toUpperCase()}`} · ${job.done}/${job.total}${job.current ? ` · ${job.current}` : ''}${job.errors.length ? ` · ${job.errors.length} errors` : ''}${stopReason ? ` · ${stopReason}` : ''}` : '';
+  const jobText = job.kind ? `${job.pausing ? 'Pausing' : job.running ? 'Working' : job.paused ? 'Paused' : 'Finished'} · ${job.kind === 'match' ? 'Finding YouTube matches' : job.kind === 'tag' ? 'Updating WAV tags' : `Downloading ${job.kind.toUpperCase()}`} · ${job.done}/${job.total}${job.current ? ` · ${job.current}` : ''}${job.errors.length ? ` · ${job.errors.length} errors` : ''}${stopReason ? ` · ${stopReason}` : ''}` : '';
+  $('job').hidden = job.kind !== 'match';
+  $('job').textContent = job.kind === 'match' ? jobText : '';
+  const oneOffProgress = oneOff.status === 'working' ? 'Working · Reading YouTube details for one-off download' :
+    oneOff.status === 'downloading' ? `Working · Downloading ${oneOff.filename}` : '';
+  const downloadProgress = [job.kind && job.kind !== 'match' ? jobText : '', oneOffProgress].filter(Boolean).join('\n');
+  $('download-job').textContent = downloadProgress;
+  $('download-job').hidden = !downloadProgress;
   const q = $('filter').value.trim().toLowerCase();
   const filter = $('status-filter').value;
   const found = state.tracks.map((track,index) => ({track,index})).filter(({track}) =>

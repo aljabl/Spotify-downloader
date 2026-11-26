@@ -124,7 +124,8 @@ class CoreTests(unittest.TestCase):
             with patch("server.convert_to_alac") as convert, patch("yt_dlp.YoutubeDL") as youtube:
                 source.parent.mkdir(parents=True, exist_ok=True)
                 source.write_bytes(b"compressed source")
-                youtube.return_value.__enter__.return_value.extract_info.return_value = {"filepath": str(source)}
+                youtube.return_value.__enter__.return_value.extract_info.return_value = {
+                    "requested_downloads": [{"filepath": str(source)}]}
                 download_track(track, "alac")
             options = youtube.call_args.args[0]
             self.assertNotIn("postprocessors", options)
