@@ -13,36 +13,46 @@
     <header class="topbar"><div class="brand"><span class="mark">↓</span><span>Spotify Downloader</span></div><span class="local">Local app</span></header>
     <section class="hero"><h1>Spotify Downloader</h1><p>Download a single YouTube video or load a Spotify playlist, then save the audio as MP3 or WAV.</p></section>
     <div id="notice" class="notice" role="status" hidden></div>
-    <section class="card">
-      <div class="step"><div><h2>Download one song</h2><p>Paste a YouTube video link. Spotify sign-in is not needed. Title and artist are optional; when left blank, the app uses the video's available details.</p></div></div>
+    <details class="card" open>
+      <summary class="section-header"><h2>Download one song</h2></summary>
+      <div class="section-content"><p>Paste a YouTube video link. Spotify sign-in is not needed. Title and artist are optional; when left blank, the app uses the video's available details.</p>
       <form id="one-off-form">
         <div class="input-row"><input id="one-off-url" type="url" aria-label="YouTube video link" placeholder="https://www.youtube.com/watch?v=…" required><button id="one-off-submit" class="button" type="submit">Download song</button></div>
         <div class="row one-off-fields"><label>Song title <input id="one-off-title" type="text" maxlength="200" placeholder="Optional"></label><label>Artist <input id="one-off-artist" type="text" maxlength="200" placeholder="Optional"></label><label class="format">Format <select id="one-off-format"><option value="mp3">MP3</option><option value="wav">WAV</option></select></label></div>
       </form>
       <p id="one-off-status" class="muted" role="status" hidden></p>
-    </section>
-    <section class="card">
-      <div class="step"><div><h2>Connect Spotify</h2><p>Spotify supplies song details for WAV tags. Audio comes from the YouTube videos you select.</p></div></div>
+      </div>
+    </details>
+    <details class="card" open>
+      <summary class="section-header"><h2>Connect Spotify</h2></summary>
+      <div class="section-content"><p>Spotify supplies song details for WAV tags. Audio comes from the YouTube videos you select.</p>
       <div class="row"><a class="button" href="/auth" id="connect">Connect Spotify</a><span id="connection" class="muted">Checking connection…</span></div>
-    </section>
-    <section class="card">
-      <div class="step"><div><h2>Load a playlist</h2><p>The current Spotify API requires a playlist you own or collaborate on.</p></div></div>
+      </div>
+    </details>
+    <details class="card" open>
+      <summary class="section-header"><h2>Load a playlist</h2></summary>
+      <div class="section-content"><p>The current Spotify API requires a playlist you own or collaborate on.</p>
       <form id="playlist-form" class="input-row"><input id="playlist-url" type="url" placeholder="https://open.spotify.com/playlist/…" required><button class="button" type="submit">Load playlist</button></form>
       <p id="playlist-summary" class="muted"></p>
-    </section>
-    <section class="card">
-      <div class="step"><div><h2>Review YouTube matches</h2><p>YouTube search starts after the playlist loads and prefers titles marked Official. Pause it any time; paste a video link to override a result. Ignore a song to exclude it from matching, downloads, and WAV tag updates. Existing files are kept.</p></div></div>
+      </div>
+    </details>
+    <details class="card" open>
+      <summary class="section-header"><h2>Review YouTube matches</h2></summary>
+      <div class="section-content"><p>YouTube search starts after the playlist loads and prefers titles marked Official. Pause it any time; paste a video link to override a result. Ignore a song to exclude it from matching, downloads, and WAV tag updates. Existing files are kept.</p>
       <div class="row"><button id="match" class="button secondary">Resume YouTube search</button><input id="filter" type="search" placeholder="Filter songs"><select id="status-filter" aria-label="Filter by status"><option value="all">All songs</option><option value="needs_review">Needs review</option><option value="matched">Matched</option><option value="downloaded">Downloaded</option><option value="error">Errors</option><option value="ignored">Ignored</option></select></div>
       <div id="job" class="job" hidden></div>
       <div id="tracks" class="tracks"><p class="empty">Load a playlist to see its songs.</p></div>
       <p id="visible-count" class="muted"></p>
       <button id="show-more" class="text-button" hidden>Show more</button>
-    </section>
-    <section class="card final-card">
-      <div class="step"><div><h2>Download audio</h2><p>Files are saved as <strong>song title (artist).mp3</strong> or <strong>song title (artist).wav</strong>. WAV files receive Spotify title, artist, album, release date, track number, and available artist genre tags.</p></div></div>
+      </div>
+    </details>
+    <details class="card final-card" open>
+      <summary class="section-header"><h2>Download audio</h2></summary>
+      <div class="section-content"><p>Files are saved as <strong>song title (artist).mp3</strong> or <strong>song title (artist).wav</strong>. WAV files receive Spotify title, artist, album, release date, track number, and available artist genre tags.</p>
       <div class="row"><label class="format">Format <select id="format"><option value="mp3">MP3 · smaller files</option><option value="wav">WAV · larger files</option></select></label><button id="download" class="button">Download selected matches</button><button id="tag-wav" class="button secondary">Update existing WAV tags</button></div>
       <p id="folder" class="muted"></p><p class="small">Download only audio you have permission to save. YouTube availability and match quality can vary. WAV conversion cannot add detail to a compressed source.</p>
-    </section>
+      </div>
+    </details>
     <footer>Runs on your computer · Spotify token stays in memory · <a href="https://github.com/aljabl/Spotify-downloader">Source code</a></footer>
   </main>
 </body>

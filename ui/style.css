@@ -24,9 +24,13 @@ body { margin: 0; background: var(--cream); }
 .hero h1 { max-width: 850px; margin: 0 0 16px; color: var(--purple); font: 900 clamp(42px, 5vw, 63px)/1.05 Lato, Arial, sans-serif; letter-spacing: -.035em; }
 .hero p { max-width: 730px; margin: 0; font-size: 18px; line-height: 1.5; }
 .card { margin: 18px 4px 24px 0; padding: 30px; border-radius: 32px; background: var(--blue); box-shadow: var(--shadow); }
-.step { display: block; }
-.step h2 { margin: 0 0 7px; font: 900 27px/1.1 Lato, Arial, sans-serif; }
-.step p { margin: 0; font-size: 16px; line-height: 1.5; }
+.section-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; cursor: pointer; list-style: none; }
+.section-header::-webkit-details-marker { display: none; }
+.section-header h2 { margin: 0; font: 900 27px/1.1 Lato, Arial, sans-serif; }
+.section-header::after { content: '⌄'; font: 900 29px/1 Lato, Arial, sans-serif; }
+.card[open] > .section-header::after { transform: rotate(180deg); }
+.section-content { margin-top: 10px; }
+.section-content > p:first-child { margin: 0; font-size: 16px; line-height: 1.5; }
 .row, .input-row, .track-actions { display: flex; align-items: center; gap: 13px; flex-wrap: wrap; margin: 24px 0 0; }
 .input-row input { flex: 1; min-width: 240px; }
 .one-off-fields { margin-top: 16px; }
@@ -75,4 +79,4 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
 .empty { padding: 20px 0; font-size: 16px; }
 footer { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 45px; padding: 25px 0 50px; border-top: 2px solid var(--purple); font-size: 14px; }
 footer a { color: var(--purple); font-weight: 700; }
-@media (max-width: 650px) { .shell { width: calc(100% - 28px); } .topbar { margin-top: 14px; padding: 12px 16px; } .brand { font-size: 17px; } .hero { padding: 42px 0 25px; } .hero h1 { font-size: 40px; } .hero p { font-size: 17px; } .card { padding: 22px; } .row > * { width: 100%; } #filter { margin-left: 0; } .track-heading { display: block; } .track-controls { margin-top: 11px; } .step h2 { font-size: 24px; } }
+@media (max-width: 650px) { .shell { width: calc(100% - 28px); } .topbar { margin-top: 14px; padding: 12px 16px; } .brand { font-size: 17px; } .hero { padding: 42px 0 25px; } .hero h1 { font-size: 40px; } .hero p { font-size: 17px; } .card { padding: 22px; } .row > * { width: 100%; } #filter { margin-left: 0; } .track-heading { display: block; } .track-controls { margin-top: 11px; } .section-header h2 { font-size: 24px; } }
