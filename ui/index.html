@@ -23,8 +23,8 @@
       <p id="playlist-summary" class="muted"></p>
     </section>
     <section class="card">
-      <div class="step"><div><h2>Review YouTube matches</h2><p>YouTube search starts after the playlist loads and prefers titles marked Official. Pause it any time; paste a video link to override a result.</p></div></div>
-      <div class="row"><button id="match" class="button secondary">Resume YouTube search</button><input id="filter" type="search" placeholder="Filter songs"><select id="status-filter" aria-label="Filter by status"><option value="all">All songs</option><option value="needs_review">Needs review</option><option value="matched">Matched</option><option value="downloaded">Downloaded</option><option value="error">Errors</option></select></div>
+      <div class="step"><div><h2>Review YouTube matches</h2><p>YouTube search starts after the playlist loads and prefers titles marked Official. Pause it any time; paste a video link to override a result. Ignore a song to exclude it from matching, downloads, and WAV tag updates. Existing files are kept.</p></div></div>
+      <div class="row"><button id="match" class="button secondary">Resume YouTube search</button><input id="filter" type="search" placeholder="Filter songs"><select id="status-filter" aria-label="Filter by status"><option value="all">All songs</option><option value="needs_review">Needs review</option><option value="matched">Matched</option><option value="downloaded">Downloaded</option><option value="error">Errors</option><option value="ignored">Ignored</option></select></div>
       <div id="job" class="job" hidden></div>
       <div id="tracks" class="tracks"><p class="empty">Load a playlist to see its songs.</p></div>
       <p id="visible-count" class="muted"></p>

@@ -159,6 +159,8 @@ class App:
         with self.lock:
             changed = False
             for track in self.tracks:
+                if track.get("ignored"):
+                    continue
                 candidates = track.get("candidates") or []
                 old_top_id = candidates[0].get("id") if candidates else None
                 source = track.get("selection_source")
@@ -260,10 +262,10 @@ class App:
                          "duration_ms": item.get("duration_ms"), "spotify_id": item.get("id"),
                          **spotify_metadata(item), "genre": None,
                          "candidates": [], "selected": None, "selection_source": None,
-                         "status": "pending", "error": ""}
+                         "status": "pending", "error": "", "ignored": False}
                 if item.get("id") and previous[item["id"]]:
                     saved = previous[item["id"]].popleft()
-                    for key in ("candidates", "selected", "selection_source", "status", "error", "genre"):
+                    for key in ("candidates", "selected", "selection_source", "status", "error", "genre", "ignored"):
                         track[key] = saved.get(key, track[key])
                 tracks.append(track)
             offset += len(page.get("items", []))
@@ -282,7 +284,7 @@ class App:
             if self.job["running"]:
                 return 0
             target = [i for i, track in enumerate(self.tracks)
-                      if track["status"] == "pending" and not track.get("selected")]
+                      if track["status"] == "pending" and not track.get("selected") and not track.get("ignored")]
         if target:
             self.begin_job("match", target)
         return len(target)
@@ -305,10 +307,20 @@ class App:
             self.pause_requested = True
             self.job["pausing"] = True
 
+    def set_ignored(self, index, ignored):
+        if type(index) is not int or type(ignored) is not bool:
+            raise ValueError("Choose a valid song and Ignore or Restore action.")
+        with self.lock:
+            if index < 0 or index >= len(self.tracks):
+                raise ValueError("Track index is invalid.")
+            self.tracks[index]["ignored"] = ignored
+            self.save()
+
     def enrich_metadata(self, target):
         """Fill older saved tracks and optional artist genres before writing WAVs."""
         if not self.token:
             return
+        target = [i for i in target if not self.tracks[i].get("ignored")]
         missing = [(i, self.tracks[i].get("spotify_id")) for i in target
                    if self.tracks[i].get("spotify_id") and
                    (not self.tracks[i].get("album") or not self.tracks[i].get("artist_id"))]
@@ -364,6 +376,9 @@ class App:
                 if kind == "match" and self.pause_requested:
                     self.job["paused"] = True
                     break
+                if self.tracks[index].get("ignored"):
+                    self.job["total"] -= 1
+                    continue
                 track = dict(self.tracks[index])
                 self.job["current"] = f'{track["title"]} — {track["artist"]}'
             try:
@@ -371,13 +386,14 @@ class App:
                     candidates = search_youtube(track)
                     best = candidates[0] if candidates else None
                     with self.lock:
-                        self.tracks[index]["candidates"] = candidates
-                        if not self.tracks[index].get("selected"):
-                            self.tracks[index]["selected"] = best["id"] if best and best["score"] >= 0.62 else None
-                            self.tracks[index]["selection_source"] = "auto" if self.tracks[index]["selected"] else None
-                            self.tracks[index]["status"] = "matched" if self.tracks[index]["selected"] else "needs_review"
-                        self.tracks[index]["error"] = ""
-                        self.save()
+                        if not self.tracks[index].get("ignored"):
+                            self.tracks[index]["candidates"] = candidates
+                            if not self.tracks[index].get("selected"):
+                                self.tracks[index]["selected"] = best["id"] if best and best["score"] >= 0.62 else None
+                                self.tracks[index]["selection_source"] = "auto" if self.tracks[index]["selected"] else None
+                                self.tracks[index]["status"] = "matched" if self.tracks[index]["selected"] else "needs_review"
+                            self.tracks[index]["error"] = ""
+                            self.save()
                 elif kind == "tag":
                     write_wav_metadata(OUTPUT / filename(track, "wav"), track)
                     with self.lock:
@@ -394,7 +410,7 @@ class App:
             except Exception as error:
                 detail = re.sub(r"\x1b\[[0-9;]*m", "", str(error))
                 with self.lock:
-                    if kind != "match" or not self.tracks[index].get("selected"):
+                    if not self.tracks[index].get("ignored") and (kind != "match" or not self.tracks[index].get("selected")):
                         self.tracks[index]["status"] = "error"
                         self.tracks[index]["error"] = detail[:300]
                     self.job["errors"].append(self.job["current"] + ": " + detail[:150])
@@ -560,11 +576,15 @@ class Handler(BaseHTTPRequestHandler):
                 self.json_response({"count": count})
             elif path == "/api/match":
                 with APP.lock:
-                    target = [i for i, t in enumerate(APP.tracks) if t["status"] in ("pending", "needs_review", "error") and not t.get("selected")]
+                    target = [i for i, t in enumerate(APP.tracks) if t["status"] in ("pending", "needs_review", "error")
+                              and not t.get("selected") and not t.get("ignored")]
                 APP.begin_job("match", target)
                 self.json_response({"count": len(target)})
             elif path == "/api/pause":
                 APP.pause_match()
+                self.json_response({"ok": True})
+            elif path == "/api/ignore":
+                APP.set_ignored(data.get("index"), data.get("ignored"))
                 self.json_response({"ok": True})
             elif path == "/api/choose":
                 index = data.get("index")
@@ -576,6 +596,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not VIDEO_ID.fullmatch(selected):
                     raise ValueError("Choose a valid YouTube video.")
                 with APP.lock:
+                    if APP.tracks[index].get("ignored"):
+                        raise ValueError("Restore this song before choosing a YouTube match.")
                     APP.tracks[index]["selected"] = selected
                     APP.tracks[index]["selection_source"] = "manual"
                     APP.tracks[index]["status"] = "matched"
@@ -587,14 +609,14 @@ class Handler(BaseHTTPRequestHandler):
                 if extension not in ("mp3", "wav"):
                     raise ValueError("Choose MP3 or WAV.")
                 with APP.lock:
-                    target = [i for i, t in enumerate(APP.tracks) if t.get("selected") and
+                    target = [i for i, t in enumerate(APP.tracks) if t.get("selected") and not t.get("ignored") and
                               (extension == "wav" or not (OUTPUT / filename(t, extension)).exists())]
                 APP.begin_job(extension, target)
                 self.json_response({"count": len(target)})
             elif path == "/api/tag-wav":
                 with APP.lock:
                     target = [i for i, track in enumerate(APP.tracks)
-                              if (OUTPUT / filename(track, "wav")).is_file() and
+                              if not track.get("ignored") and (OUTPUT / filename(track, "wav")).is_file() and
                               (OUTPUT / filename(track, "wav")).stat().st_size > 0]
                     if target and not APP.token and any(not APP.tracks[i].get("album") or
                                                         not APP.tracks[i].get("release_date") for i in target):

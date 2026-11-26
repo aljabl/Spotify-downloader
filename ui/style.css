@@ -49,12 +49,17 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
 .tracks { margin-top: 23px; }
 .track { padding: 21px 0; border-top: 2px solid #47406e55; }
 .track-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+.track-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .track-heading strong { display: block; font: 900 19px/1.2 Lato, Arial, sans-serif; }
 .track-heading span:not(.badge) { display: block; margin-top: 5px; font-size: 15px; }
 .badge { display: inline-block; padding: 7px 12px; border-radius: 18px; background: var(--purple); color: var(--cream); font-size: 13px; font-weight: 700; white-space: nowrap; }
 .badge.needs_review { background: var(--orange); color: var(--purple); }
 .badge.error { background: var(--red); color: var(--cream); }
 .badge.downloaded { background: var(--deep-blue); color: var(--cream); }
+.badge.ignored { border: 2px solid var(--purple); background: var(--cream); color: var(--purple); }
+.ignore-toggle { min-height: 36px; padding: 6px 13px; border: 2px solid var(--purple); border-radius: 10px; background: var(--cream); color: var(--purple); font: 700 14px Roboto, Arial, sans-serif; cursor: pointer; }
+.ignore-toggle:hover { background: var(--orange); }
+.track.is-ignored { border-left: 4px solid var(--purple); padding-left: 14px; }
 .track-actions { margin-top: 12px; }
 .candidate, .manual { flex: 1; min-width: 220px; }
 .match-hint { margin: 12px 0 0; font-size: 14px; }
@@ -66,4 +71,4 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
 .empty { padding: 20px 0; font-size: 16px; }
 footer { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 45px; padding: 25px 0 50px; border-top: 2px solid var(--purple); font-size: 14px; }
 footer a { color: var(--purple); font-weight: 700; }
-@media (max-width: 650px) { .shell { width: calc(100% - 28px); } .topbar { margin-top: 14px; padding: 12px 16px; } .brand { font-size: 17px; } .hero { padding: 42px 0 25px; } .hero h1 { font-size: 40px; } .hero p { font-size: 17px; } .card { padding: 22px; } .row > * { width: 100%; } #filter { margin-left: 0; } .track-heading { display: block; } .badge { margin-top: 11px; } .step h2 { font-size: 24px; } }
+@media (max-width: 650px) { .shell { width: calc(100% - 28px); } .topbar { margin-top: 14px; padding: 12px 16px; } .brand { font-size: 17px; } .hero { padding: 42px 0 25px; } .hero h1 { font-size: 40px; } .hero p { font-size: 17px; } .card { padding: 22px; } .row > * { width: 100%; } #filter { margin-left: 0; } .track-heading { display: block; } .track-controls { margin-top: 11px; } .step h2 { font-size: 24px; } }

@@ -21,7 +21,7 @@ def isolated_app():
 
 def sample_track(title="Example Song"):
     return {"title": title, "artist": "Artist", "selected": None, "selection_source": None, "status": "pending",
-            "candidates": [], "error": "", "duration_ms": 180000}
+            "candidates": [], "error": "", "duration_ms": 180000, "ignored": False}
 
 
 class CoreTests(unittest.TestCase):
@@ -146,7 +146,7 @@ class CoreTests(unittest.TestCase):
     def test_reloading_playlist_keeps_match_and_adds_album(self):
         with isolated_app() as app:
             saved = dict(sample_track(), spotify_id="track-id", selected="YE7VzlLtp-4",
-                         selection_source="manual", status="matched")
+                         selection_source="manual", status="matched", ignored=True)
             app.tracks = [saved]
             item = {"track": {"type": "track", "id": "track-id", "name": "Example Song",
                               "artists": [{"id": "artist-id", "name": "Artist"}],
@@ -158,14 +158,61 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(app.tracks[0]["release_date"], "2021-09-03")
             self.assertEqual(app.tracks[0]["selected"], "YE7VzlLtp-4")
             self.assertEqual(app.tracks[0]["selection_source"], "manual")
+            self.assertTrue(app.tracks[0]["ignored"])
 
     def test_restart_searches_only_pending_tracks(self):
         with isolated_app() as app:
-            app.tracks = [sample_track("First"), sample_track("Second")]
+            app.tracks = [sample_track("First"), sample_track("Second"), dict(sample_track("Third"), ignored=True)]
             app.tracks[1]["selected"] = "YE7VzlLtp-4"
             with patch.object(app, "begin_job") as begin:
                 self.assertEqual(app.start_auto_match(), 1)
                 begin.assert_called_once_with("match", [0])
+
+    def test_ignore_and_restore_survive_restart(self):
+        with isolated_app() as app:
+            app.tracks = [sample_track()]
+            app.set_ignored(0, True)
+            restarted = App()
+            self.assertTrue(restarted.tracks[0]["ignored"])
+            restarted.set_ignored(0, False)
+            self.assertFalse(App().tracks[0]["ignored"])
+
+    def test_ignored_song_is_skipped_in_queued_search(self):
+        with isolated_app() as app:
+            app.tracks = [dict(sample_track("First"), ignored=True), sample_track("Second")]
+            app.job.update({"kind": "match", "running": True, "total": 2})
+            candidate = {"id": "YE7VzlLtp-4", "score": 1.0}
+            with patch("server.search_youtube", return_value=[candidate]) as search:
+                app.run_job("match", [0, 1])
+            search.assert_called_once()
+            self.assertEqual(app.tracks[0]["status"], "pending")
+            self.assertEqual(app.tracks[1]["status"], "matched")
+            self.assertEqual((app.job["done"], app.job["total"]), (1, 1))
+
+    def test_ignoring_song_during_search_discards_result(self):
+        with isolated_app() as app:
+            app.tracks = [sample_track()]
+            app.job.update({"kind": "match", "running": True, "total": 1})
+            def search(_):
+                app.set_ignored(0, True)
+                return [{"id": "YE7VzlLtp-4", "score": 1.0}]
+            with patch("server.search_youtube", side_effect=search):
+                app.run_job("match", [0])
+            self.assertTrue(app.tracks[0]["ignored"])
+            self.assertEqual(app.tracks[0]["status"], "pending")
+            self.assertEqual(app.tracks[0]["candidates"], [])
+
+    def test_ignored_song_is_skipped_in_queued_download(self):
+        with isolated_app() as app:
+            app.tracks = [dict(sample_track("First"), selected="YE7VzlLtp-4", status="matched", ignored=True),
+                          dict(sample_track("Second"), selected="YE7VzlLtp-4", status="matched")]
+            app.job.update({"kind": "mp3", "running": True, "total": 2})
+            with patch("server.download_track") as download:
+                app.run_job("mp3", [0, 1])
+            download.assert_called_once()
+            self.assertEqual(app.tracks[0]["status"], "matched")
+            self.assertEqual(app.tracks[1]["status"], "downloaded")
+            self.assertEqual((app.job["done"], app.job["total"]), (1, 1))
 
     def test_manual_link_wins_over_search_in_progress(self):
         with isolated_app() as app:
