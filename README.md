@@ -1,13 +1,13 @@
 # Spotify Downloader
 
-A local playlist downloader. It reads tracks from a Spotify playlist you own or collaborate on, searches YouTube for matches, and saves selected videos' audio as MP3 or WAV in `Spotify/`. Download only audio you have permission to save.
+A local audio downloader. Paste a YouTube video link to save one song, or load a Spotify playlist you own or collaborate on and download its matched videos. Files are saved as MP3 or WAV in `Spotify/`. Download only audio you have permission to save.
 
 ## macOS
 
 1. Install Python 3.10 or newer, FFmpeg, and Deno 2.3+ or Node.js 22+. If you use Homebrew, `brew install python ffmpeg deno`.
 2. Double-click **Start Spotify Downloader.command**. The launcher installs the pinned `yt-dlp` release and its YouTube JavaScript support from PyPI into a local `.venv` folder.
-3. The app opens at <http://127.0.0.1:8765>. Connect Spotify and paste a playlist link. YouTube matching starts automatically and prefers video titles containing the word "Official". Review uncertain results or paste a video link to override one. Use **Ignore** on a song to exclude it from matching, downloads, and WAV tag updates; **Restore** adds it back. Ignoring does not delete a file already saved. Then choose MP3 or WAV.
-4. Keep the Terminal window open until downloads finish. Files are written to the `Spotify` folder beside this README. WAV files include Spotify title, artist, album, release date, track number, and the primary artist's genre when Spotify provides it. To tag WAV files already in the folder without accessing YouTube, reconnect Spotify, reload the same playlist, and click **Update existing WAV tags**.
+3. The app opens at <http://127.0.0.1:8765>. For one song, paste a YouTube video link in **Download one song** and choose MP3 or WAV. Title and artist are optional; the app uses video details when they are blank. No Spotify sign-in is required for this. For a playlist, connect Spotify and paste a playlist link. YouTube matching starts automatically and prefers video titles containing the word "Official". Review uncertain results or paste a video link to override one. Use **Ignore** on a song to exclude it from matching, downloads, and WAV tag updates; **Restore** adds it back. Ignoring does not delete a file already saved.
+4. Keep the Terminal window open until downloads finish. Files are written to the `Spotify` folder beside this README. Playlist WAV files include Spotify title, artist, album, release date, track number, and the primary artist's genre when Spotify provides it. One-off WAV files receive the title and artist from the video or your optional edits. To tag playlist WAV files already in the folder without accessing YouTube, reconnect Spotify, reload the same playlist, and click **Update existing WAV tags**.
 
 The Spotify app is currently in Development mode; Spotify may limit who can sign in. The current Spotify API only returns tracks for playlists owned by the signed-in user or playlists they collaborate on. The app cannot retrieve full audio from Spotify. It searches YouTube and uses `yt-dlp` for selected videos. YouTube availability and matching accuracy vary.
 

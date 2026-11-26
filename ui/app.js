@@ -32,6 +32,16 @@ function render() {
   $('playlist-summary').textContent = state.playlist_title ? `${state.playlist_title} · ${state.tracks.length} songs${ignoredCount ? ` · ${ignoredCount} ignored` : ''}` : '';
   $('folder').textContent = `Output folder: ${state.output_dir}`;
   const job = state.job;
+  const oneOff = state.one_off || {status:'idle'};
+  $('one-off-submit').disabled = oneOff.status === 'working' || oneOff.status === 'downloading';
+  const oneOffText = oneOff.status === 'working' ? 'Reading video details and downloading audio…' :
+    oneOff.status === 'downloading' ? `Downloading ${oneOff.filename}…` :
+    oneOff.status === 'done' ? `Saved ${oneOff.filename} to the Spotify folder.` :
+    oneOff.status === 'existing' ? `${oneOff.filename} is already in the Spotify folder.` :
+    oneOff.status === 'error' ? `Download failed: ${oneOff.error}` : '';
+  $('one-off-status').textContent = oneOffText;
+  $('one-off-status').hidden = !oneOffText;
+  $('one-off-status').classList.toggle('error-text', oneOff.status === 'error');
   const searching = job.running && job.kind === 'match';
   $('match').textContent = searching ? (job.pausing ? 'Pausing search…' : 'Pause YouTube search') :
     state.tracks.some(t => !t.ignored && t.status === 'pending') ? 'Resume YouTube search' : 'Retry unresolved matches';
@@ -74,6 +84,15 @@ async function refresh(force = false) {
 }
 
 $('playlist-form').addEventListener('submit', async event => {event.preventDefault(); const button = event.submitter; button.disabled = true; try { await action('/api/playlist',{url:$('playlist-url').value}, r => `Loaded ${r.count} songs. YouTube matching started automatically.`, 'Loading playlist from Spotify…'); } finally {button.disabled = false;}});
+$('one-off-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = event.submitter;
+  button.disabled = true;
+  try {
+    await action('/api/one-off', {url:$('one-off-url').value, title:$('one-off-title').value,
+      artist:$('one-off-artist').value, format:$('one-off-format').value}, () => 'One-off download started.');
+  } finally { button.disabled = state?.one_off?.status === 'working' || state?.one_off?.status === 'downloading'; }
+});
 $('match').addEventListener('click', () => state?.job.running && state.job.kind === 'match' ?
   action('/api/pause',{}, () => 'Search will pause after the current song.') :
   action('/api/match',{}, r => `Searching ${r.count} unresolved songs.`));

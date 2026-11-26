@@ -11,8 +11,16 @@
 <body>
   <main class="shell">
     <header class="topbar"><div class="brand"><span class="mark">↓</span><span>Spotify Downloader</span></div><span class="local">Local app</span></header>
-    <section class="hero"><h1>Spotify playlist downloader</h1><p>Connect Spotify, load a playlist, and review the YouTube matches before saving audio as MP3 or WAV.</p></section>
+    <section class="hero"><h1>Spotify Downloader</h1><p>Download a single YouTube video or load a Spotify playlist, then save the audio as MP3 or WAV.</p></section>
     <div id="notice" class="notice" role="status" hidden></div>
+    <section class="card">
+      <div class="step"><div><h2>Download one song</h2><p>Paste a YouTube video link. Spotify sign-in is not needed. Title and artist are optional; when left blank, the app uses the video's available details.</p></div></div>
+      <form id="one-off-form">
+        <div class="input-row"><input id="one-off-url" type="url" aria-label="YouTube video link" placeholder="https://www.youtube.com/watch?v=…" required><button id="one-off-submit" class="button" type="submit">Download song</button></div>
+        <div class="row one-off-fields"><label>Song title <input id="one-off-title" type="text" maxlength="200" placeholder="Optional"></label><label>Artist <input id="one-off-artist" type="text" maxlength="200" placeholder="Optional"></label><label class="format">Format <select id="one-off-format"><option value="mp3">MP3</option><option value="wav">WAV</option></select></label></div>
+      </form>
+      <p id="one-off-status" class="muted" role="status" hidden></p>
+    </section>
     <section class="card">
       <div class="step"><div><h2>Connect Spotify</h2><p>Spotify supplies song details for WAV tags. Audio comes from the YouTube videos you select.</p></div></div>
       <div class="row"><a class="button" href="/auth" id="connect">Connect Spotify</a><span id="connection" class="muted">Checking connection…</span></div>

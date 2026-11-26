@@ -8,7 +8,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from server import App, download_track, filename, match_score, playlist_id, safe_name, spotify_metadata, video_id, write_wav_metadata
+from server import App, download_track, filename, match_score, playlist_id, safe_name, spotify_metadata, video_id, write_wav_metadata, youtube_video_track
 
 
 @contextmanager
@@ -102,8 +102,53 @@ class CoreTests(unittest.TestCase):
     def test_youtube_link_validation(self):
         self.assertEqual(video_id("https://www.youtube.com/watch?v=YE7VzlLtp-4"), "YE7VzlLtp-4")
         self.assertEqual(video_id("https://youtu.be/YE7VzlLtp-4"), "YE7VzlLtp-4")
+        self.assertEqual(video_id("https://music.youtube.com/watch?v=YE7VzlLtp-4&list=abc"), "YE7VzlLtp-4")
         with self.assertRaises(ValueError):
             video_id("https://youtube.com.evil.example/watch?v=YE7VzlLtp-4")
+
+    def test_one_off_uses_youtube_details_and_optional_overrides(self):
+        info = {"id": "YE7VzlLtp-4", "title": "Video title", "track": "Track title",
+                "artist": "Track artist", "uploader": "Channel"}
+        with patch("yt_dlp.YoutubeDL") as youtube:
+            youtube.return_value.__enter__.return_value.extract_info.return_value = info
+            self.assertEqual(youtube_video_track("YE7VzlLtp-4"),
+                             {"title": "Track title", "artist": "Track artist", "selected": "YE7VzlLtp-4"})
+            self.assertEqual(youtube_video_track("YE7VzlLtp-4", "My title", "My artist"),
+                             {"title": "My title", "artist": "My artist", "selected": "YE7VzlLtp-4"})
+
+    def test_one_off_download_does_not_change_playlist(self):
+        with isolated_app() as app:
+            app.tracks = [sample_track()]
+            app.job["running"] = True  # A playlist search may continue independently.
+            with patch("server.threading.Thread") as thread:
+                app.start_one_off("https://youtu.be/YE7VzlLtp-4", "mp3")
+            thread.return_value.start.assert_called_once()
+            self.assertEqual(app.one_off["status"], "working")
+            with self.assertRaises(ValueError):
+                app.start_one_off("https://youtu.be/YE7VzlLtp-4", "mp3")
+            with patch("server.youtube_video_track", return_value={"title": "New song", "artist": "New artist",
+                                                                  "selected": "YE7VzlLtp-4"}), \
+                 patch("server.download_track") as download:
+                app.run_one_off("YE7VzlLtp-4", "mp3", "", "")
+            download.assert_called_once()
+            self.assertEqual(app.one_off, {"status": "done", "filename": "New song (New artist).mp3", "error": ""})
+            self.assertEqual(app.tracks, [sample_track()])
+            self.assertTrue(app.job["running"])
+
+    def test_one_off_failure_is_reported(self):
+        with isolated_app() as app:
+            with patch("server.youtube_video_track", side_effect=ValueError("YouTube video is unavailable")):
+                app.run_one_off("YE7VzlLtp-4", "wav", "", "")
+            self.assertEqual(app.one_off["status"], "error")
+            self.assertIn("unavailable", app.one_off["error"])
+
+    def test_one_off_rejects_bad_link_and_format(self):
+        with isolated_app() as app:
+            for url, format in (("https://evil.example/watch?v=YE7VzlLtp-4", "mp3"),
+                                ("https://youtu.be/YE7VzlLtp-4", "flac")):
+                with self.assertRaises(ValueError):
+                    app.start_one_off(url, format)
+            self.assertEqual(app.one_off["status"], "idle")
 
     def test_output_name_cannot_escape_folder(self):
         track = {"title": "../Track: 100%", "artist": "A/B"}

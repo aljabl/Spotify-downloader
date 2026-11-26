@@ -51,7 +51,7 @@ def video_id(value):
     parsed = urllib.parse.urlparse(value.strip())
     if parsed.scheme != "https":
         raise ValueError("Use an HTTPS YouTube video link.")
-    if parsed.hostname in ("youtube.com", "www.youtube.com", "m.youtube.com") and parsed.path == "/watch":
+    if parsed.hostname in ("youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com") and parsed.path == "/watch":
         candidate = urllib.parse.parse_qs(parsed.query).get("v", [""])[0]
     elif parsed.hostname == "youtu.be":
         candidate = parsed.path.strip("/")
@@ -145,6 +145,7 @@ class App:
         self.pause_requested = False
         self.job = {"kind": None, "running": False, "paused": False, "pausing": False,
                     "current": "", "done": 0, "total": 0, "errors": []}
+        self.one_off = {"status": "idle", "filename": "", "error": ""}
         if STATE_FILE.exists():
             try:
                 data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
@@ -204,6 +205,7 @@ class App:
         with self.lock:
             return {"connected": bool(self.token), "playlist_title": self.playlist_title,
                     "tracks": self.tracks, "job": self.job, "revision": self.revision,
+                    "one_off": self.one_off,
                     "output_dir": str(OUTPUT)}
 
     def spotify_token(self):
@@ -306,6 +308,39 @@ class App:
                 raise ValueError("No YouTube search is running.")
             self.pause_requested = True
             self.job["pausing"] = True
+
+    def start_one_off(self, url, extension, title="", artist=""):
+        if type(url) is not str:
+            raise ValueError("Paste a YouTube video link.")
+        selected = video_id(url)
+        if extension not in ("mp3", "wav"):
+            raise ValueError("Choose MP3 or WAV.")
+        if any(type(value) is not str or len(value) > 200 for value in (title, artist)):
+            raise ValueError("Title and artist must be text under 200 characters.")
+        with self.lock:
+            if self.one_off["status"] in ("working", "downloading"):
+                raise ValueError("Wait for the current one-off download to finish.")
+            self.one_off = {"status": "working", "filename": "", "error": ""}
+            self.revision += 1
+        threading.Thread(target=self.run_one_off, args=(selected, extension, title.strip(), artist.strip()), daemon=True).start()
+
+    def run_one_off(self, selected, extension, title, artist):
+        try:
+            track = youtube_video_track(selected, title, artist)
+            path = OUTPUT / filename(track, extension)
+            existed = path.is_file() and path.stat().st_size > 0
+            with self.lock:
+                self.one_off = {"status": "downloading", "filename": path.name, "error": ""}
+                self.revision += 1
+            download_track(track, extension)
+            with self.lock:
+                self.one_off = {"status": "existing" if existed else "done", "filename": path.name, "error": ""}
+                self.revision += 1
+        except Exception as error:
+            detail = re.sub(r"\x1b\[[0-9;]*m", "", str(error))[:300]
+            with self.lock:
+                self.one_off = {"status": "error", "filename": "", "error": detail}
+                self.revision += 1
 
     def set_ignored(self, index, ignored):
         if type(index) is not int or type(ignored) is not bool:
@@ -455,6 +490,23 @@ def search_youtube(track):
         candidate["score"] = match_score(track, candidate)
         candidates.append(candidate)
     return sorted(candidates, key=lambda item: item["score"], reverse=True)
+
+
+def youtube_video_track(selected, title="", artist=""):
+    import yt_dlp
+    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": True,
+                           "skip_download": True, "js_runtimes": {"deno": {}, "node": {}}}) as ydl:
+        info = ydl.extract_info("https://www.youtube.com/watch?v=" + selected, download=False)
+    if not info or info.get("id") != selected:
+        raise ValueError("Could not read details for that YouTube video.")
+
+    def first_text(*values):
+        return next((value.strip() for value in values if isinstance(value, str) and value.strip()), "")
+
+    return {"title": first_text(title, info.get("track"), info.get("title")) or "Untitled",
+            "artist": first_text(artist, info.get("artist"), info.get("creator"),
+                                 info.get("uploader"), info.get("channel")) or "Unknown artist",
+            "selected": selected}
 
 
 def download_track(track, extension):
@@ -613,6 +665,10 @@ class Handler(BaseHTTPRequestHandler):
                               (extension == "wav" or not (OUTPUT / filename(t, extension)).exists())]
                 APP.begin_job(extension, target)
                 self.json_response({"count": len(target)})
+            elif path == "/api/one-off":
+                APP.start_one_off(data.get("url", ""), data.get("format"),
+                                  data.get("title", ""), data.get("artist", ""))
+                self.json_response({"ok": True})
             elif path == "/api/tag-wav":
                 with APP.lock:
                     target = [i for i, track in enumerate(APP.tracks)

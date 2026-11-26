@@ -29,6 +29,10 @@ body { margin: 0; background: var(--cream); }
 .step p { margin: 0; font-size: 16px; line-height: 1.5; }
 .row, .input-row, .track-actions { display: flex; align-items: center; gap: 13px; flex-wrap: wrap; margin: 24px 0 0; }
 .input-row input { flex: 1; min-width: 240px; }
+.one-off-fields { margin-top: 16px; }
+.one-off-fields label { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 700; }
+.one-off-fields label input { width: min(220px, 100%); }
+.error-text { color: #9d1e19; font-weight: 700; }
 .button { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 10px 22px; border: 2px solid var(--purple); border-radius: 38px; background: var(--orange); color: var(--purple); box-shadow: var(--shadow); font: 700 16px Roboto, Arial, sans-serif; text-decoration: none; cursor: pointer; white-space: nowrap; }
 .button:hover { background: #ffc380; transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--purple); }
 .button.secondary { background: var(--cream); color: var(--purple); }
