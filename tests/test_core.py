@@ -82,6 +82,17 @@ class CoreTests(unittest.TestCase):
             self.assertTrue(app.job["paused"])
             self.assertEqual(app.tracks[3]["status"], "matched")
 
+    def test_tag_job_does_not_download_from_youtube(self):
+        with isolated_app() as app:
+            app.tracks = [dict(sample_track(), selected="YE7VzlLtp-4", status="matched")]
+            app.job.update({"kind": "tag", "running": True, "total": 1})
+            with patch("server.write_wav_metadata") as tag, patch("server.download_track") as download:
+                app.run_job("tag", [0])
+            self.assertEqual(tag.call_count, 1)
+            self.assertEqual(tag.call_args.args[0], server.OUTPUT / filename(app.tracks[0], "wav"))
+            download.assert_not_called()
+            self.assertEqual(app.tracks[0]["status"], "downloaded")
+
     def test_playlist_link_rejects_other_hosts_and_types(self):
         self.assertEqual(playlist_id("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=abc"), "37i9dQZF1DXcBWIGoYBM5M")
         for value in ("https://evil.example/playlist/37i9dQZF1DXcBWIGoYBM5M", "https://open.spotify.com/album/37i9dQZF1DXcBWIGoYBM5M"):

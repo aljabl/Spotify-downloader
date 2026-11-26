@@ -354,7 +354,7 @@ class App:
                     self.save()
 
     def run_job(self, kind, target):
-        if kind == "wav":
+        if kind in ("wav", "tag"):
             with self.lock:
                 self.job["current"] = "Reading Spotify metadata"
             self.enrich_metadata(target)
@@ -376,6 +376,12 @@ class App:
                             self.tracks[index]["selected"] = best["id"] if best and best["score"] >= 0.62 else None
                             self.tracks[index]["selection_source"] = "auto" if self.tracks[index]["selected"] else None
                             self.tracks[index]["status"] = "matched" if self.tracks[index]["selected"] else "needs_review"
+                        self.tracks[index]["error"] = ""
+                        self.save()
+                elif kind == "tag":
+                    write_wav_metadata(OUTPUT / filename(track, "wav"), track)
+                    with self.lock:
+                        self.tracks[index]["status"] = "downloaded"
                         self.tracks[index]["error"] = ""
                         self.save()
                 else:
@@ -584,6 +590,16 @@ class Handler(BaseHTTPRequestHandler):
                     target = [i for i, t in enumerate(APP.tracks) if t.get("selected") and
                               (extension == "wav" or not (OUTPUT / filename(t, extension)).exists())]
                 APP.begin_job(extension, target)
+                self.json_response({"count": len(target)})
+            elif path == "/api/tag-wav":
+                with APP.lock:
+                    target = [i for i, track in enumerate(APP.tracks)
+                              if (OUTPUT / filename(track, "wav")).is_file() and
+                              (OUTPUT / filename(track, "wav")).stat().st_size > 0]
+                    if target and not APP.token and any(not APP.tracks[i].get("album") or
+                                                        not APP.tracks[i].get("release_date") for i in target):
+                        raise ValueError("Connect Spotify and reload the same playlist to fill album and release date first.")
+                APP.begin_job("tag", target)
                 self.json_response({"count": len(target)})
             else:
                 self.json_response({"error": "Not found"}, 404)

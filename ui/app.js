@@ -36,9 +36,10 @@ function render() {
     state.tracks.some(t => t.status === 'pending') ? 'Resume YouTube search' : 'Retry unresolved matches';
   $('match').disabled = !state.tracks.length || job.pausing || (job.running && !searching);
   $('download').disabled = state.job.running || !state.tracks.some(t => t.selected);
+  $('tag-wav').disabled = state.job.running || !state.tracks.length;
   $('job').hidden = !job.kind;
   const stopReason = job.errors.find(error => error.startsWith('YouTube returned no audio formats'));
-  $('job').textContent = job.kind ? `${job.pausing ? 'Pausing' : job.running ? 'Working' : job.paused ? 'Paused' : 'Finished'} · ${job.kind === 'match' ? 'Finding YouTube matches' : `Downloading ${job.kind.toUpperCase()}`} · ${job.done}/${job.total}${job.current ? ` · ${job.current}` : ''}${job.errors.length ? ` · ${job.errors.length} errors` : ''}${stopReason ? ` · ${stopReason}` : ''}` : '';
+  $('job').textContent = job.kind ? `${job.pausing ? 'Pausing' : job.running ? 'Working' : job.paused ? 'Paused' : 'Finished'} · ${job.kind === 'match' ? 'Finding YouTube matches' : job.kind === 'tag' ? 'Updating WAV tags' : `Downloading ${job.kind.toUpperCase()}`} · ${job.done}/${job.total}${job.current ? ` · ${job.current}` : ''}${job.errors.length ? ` · ${job.errors.length} errors` : ''}${stopReason ? ` · ${stopReason}` : ''}` : '';
   const q = $('filter').value.trim().toLowerCase();
   const filter = $('status-filter').value;
   const found = state.tracks.map((track,index) => ({track,index})).filter(({track}) =>
@@ -74,6 +75,7 @@ $('match').addEventListener('click', () => state?.job.running && state.job.kind 
   action('/api/pause',{}, () => 'Search will pause after the current song.') :
   action('/api/match',{}, r => `Searching ${r.count} unresolved songs.`));
 $('download').addEventListener('click', () => action('/api/download',{format:$('format').value}, r => `Downloading ${r.count} selected songs to the Spotify folder.`));
+$('tag-wav').addEventListener('click', () => action('/api/tag-wav',{}, r => `Updating tags in ${r.count} existing WAV files without using YouTube.`));
 $('filter').addEventListener('input', () => {shown=100;render();});
 $('status-filter').addEventListener('change', () => {shown=100;render();});
 $('show-more').addEventListener('click', () => {shown+=100;render();});
