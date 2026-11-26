@@ -37,7 +37,8 @@ function render() {
   $('match').disabled = !state.tracks.length || job.pausing || (job.running && !searching);
   $('download').disabled = state.job.running || !state.tracks.some(t => t.selected);
   $('job').hidden = !job.kind;
-  $('job').textContent = job.kind ? `${job.pausing ? 'Pausing' : job.running ? 'Working' : job.paused ? 'Paused' : 'Finished'} · ${job.kind === 'match' ? 'Finding YouTube matches' : `Downloading ${job.kind.toUpperCase()}`} · ${job.done}/${job.total}${job.current ? ` · ${job.current}` : ''}${job.errors.length ? ` · ${job.errors.length} errors` : ''}` : '';
+  const stopReason = job.errors.find(error => error.startsWith('YouTube returned no audio formats'));
+  $('job').textContent = job.kind ? `${job.pausing ? 'Pausing' : job.running ? 'Working' : job.paused ? 'Paused' : 'Finished'} · ${job.kind === 'match' ? 'Finding YouTube matches' : `Downloading ${job.kind.toUpperCase()}`} · ${job.done}/${job.total}${job.current ? ` · ${job.current}` : ''}${job.errors.length ? ` · ${job.errors.length} errors` : ''}${stopReason ? ` · ${stopReason}` : ''}` : '';
   const q = $('filter').value.trim().toLowerCase();
   const filter = $('status-filter').value;
   const found = state.tracks.map((track,index) => ({track,index})).filter(({track}) =>
