@@ -1,0 +1,4 @@
+.venv/
+Spotify/
+__pycache__/
+*.pyc
