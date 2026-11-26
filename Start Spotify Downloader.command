@@ -22,10 +22,17 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v deno >/dev/null 2>&1 && ! command -v node >/dev/null 2>&1; then
+  echo "YouTube extraction needs Deno 2.3+ or Node.js 22+. Install one, then run this file again."
+  echo "On macOS with Homebrew: brew install deno"
+  read -k 1 '?Press any key to close...'
+  exit 1
+fi
+
 if [[ ! -x .venv/bin/python ]]; then
   "$PYTHON" -m venv .venv
 fi
-if ! .venv/bin/python -c 'import yt_dlp' >/dev/null 2>&1; then
+if ! .venv/bin/python -c 'from importlib.metadata import version; import yt_dlp_ejs; assert version("yt-dlp") == "2026.11.23"' >/dev/null 2>&1; then
   .venv/bin/python -m pip install --disable-pip-version-check -r requirements.txt
 fi
 

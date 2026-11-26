@@ -7,12 +7,14 @@ import json
 import re
 import secrets
 import shutil
+import subprocess
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
+from collections import defaultdict, deque
 from difflib import SequenceMatcher
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -75,6 +77,35 @@ def filename(track, extension):
     return f"{title} ({artist}).{extension}"
 
 
+def spotify_metadata(item):
+    album = item.get("album") or {}
+    artists = item.get("artists") or []
+    return {"album": album.get("name") or None,
+            "release_date": album.get("release_date") or None,
+            "track_number": item.get("track_number"),
+            "artist_id": artists[0].get("id") if artists else None}
+
+
+def write_wav_metadata(path, track):
+    tags = {"title": track.get("title"), "artist": track.get("artist"),
+            "album": track.get("album"), "date": track.get("release_date"),
+            "genre": track.get("genre"), "track": track.get("track_number")}
+    temp = path.with_name(f".{path.stem}.{secrets.token_hex(6)}.wav")
+    command = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+               "-i", str(path), "-map", "0:a:0", "-c:a", "copy", "-map_metadata", "-1"]
+    for key, value in tags.items():
+        if value is not None and value != "":
+            command.extend(["-metadata", f"{key}={value}"])
+    command.extend(["-f", "wav", str(temp)])
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode or not temp.exists() or not temp.stat().st_size:
+            raise ValueError("Could not write WAV metadata: " + (result.stderr.strip()[-250:] or "FFmpeg failed."))
+        temp.replace(path)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
 def normalize(value):
     return re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
 
@@ -108,6 +139,7 @@ class App:
         self.oauth = None
         self.token = None
         self.playlist_title = ""
+        self.playlist_id = None
         self.tracks = []
         self.revision = 0
         self.pause_requested = False
@@ -117,6 +149,7 @@ class App:
             try:
                 data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
                 self.playlist_title = data.get("playlist_title", "")
+                self.playlist_id = data.get("playlist_id")
                 self.tracks = data.get("tracks", [])
             except (OSError, ValueError):
                 pass
@@ -160,7 +193,8 @@ class App:
     def save(self):
         OUTPUT.mkdir(parents=True, exist_ok=True)
         temp = STATE_FILE.with_suffix(".tmp")
-        temp.write_text(json.dumps({"playlist_title": self.playlist_title, "tracks": self.tracks}, ensure_ascii=False), encoding="utf-8")
+        temp.write_text(json.dumps({"playlist_title": self.playlist_title, "playlist_id": self.playlist_id,
+                                    "tracks": self.tracks}, ensure_ascii=False), encoding="utf-8")
         temp.replace(STATE_FILE)
         self.revision += 1
 
@@ -207,6 +241,11 @@ class App:
                 raise ValueError("Wait for the current job to finish before loading another playlist.")
         pid = playlist_id(link)
         details = self.spotify_get(f"playlists/{pid}?fields=name")
+        previous = defaultdict(deque)
+        with self.lock:
+            for track in self.tracks:
+                if track.get("spotify_id"):
+                    previous[track["spotify_id"]].append(track)
         tracks = []
         offset = 0
         while True:
@@ -217,15 +256,22 @@ class App:
                     continue
                 artists = item.get("artists") or []
                 artist = ", ".join(a.get("name", "") for a in artists if a.get("name")) or "Unknown artist"
-                tracks.append({"title": item["name"], "artist": artist,
-                               "duration_ms": item.get("duration_ms"), "spotify_id": item.get("id"),
-                               "candidates": [], "selected": None, "selection_source": None,
-                               "status": "pending", "error": ""})
+                track = {"title": item["name"], "artist": artist,
+                         "duration_ms": item.get("duration_ms"), "spotify_id": item.get("id"),
+                         **spotify_metadata(item), "genre": None,
+                         "candidates": [], "selected": None, "selection_source": None,
+                         "status": "pending", "error": ""}
+                if item.get("id") and previous[item["id"]]:
+                    saved = previous[item["id"]].popleft()
+                    for key in ("candidates", "selected", "selection_source", "status", "error", "genre"):
+                        track[key] = saved.get(key, track[key])
+                tracks.append(track)
             offset += len(page.get("items", []))
             if offset >= page.get("total", 0) or not page.get("items"):
                 break
         with self.lock:
             self.playlist_title = details.get("name") or "Spotify playlist"
+            self.playlist_id = pid
             self.tracks = tracks
             self.save()
         self.start_auto_match()
@@ -259,7 +305,60 @@ class App:
             self.pause_requested = True
             self.job["pausing"] = True
 
+    def enrich_metadata(self, target):
+        """Fill older saved tracks and optional artist genres before writing WAVs."""
+        if not self.token:
+            return
+        missing = [(i, self.tracks[i].get("spotify_id")) for i in target
+                   if self.tracks[i].get("spotify_id") and
+                   (not self.tracks[i].get("album") or not self.tracks[i].get("artist_id"))]
+        for start in range(0, len(missing), 50):
+            batch = missing[start:start + 50]
+            try:
+                ids = ",".join(track_id for _, track_id in batch)
+                response = self.spotify_get("tracks?" + urllib.parse.urlencode({"ids": ids}))
+            except (ValueError, urllib.error.URLError, TimeoutError):
+                break  # The deprecated catalog endpoint may not be available to this app.
+            by_id = {item["id"]: item for item in response.get("tracks", []) if item and item.get("id")}
+            with self.lock:
+                changed = False
+                for index, track_id in batch:
+                    item = by_id.get(track_id)
+                    if not item or self.tracks[index].get("spotify_id") != track_id:
+                        continue
+                    for key, value in spotify_metadata(item).items():
+                        if value and not self.tracks[index].get(key):
+                            self.tracks[index][key] = value
+                            changed = True
+                if changed:
+                    self.save()
+        artist_ids = list(dict.fromkeys(self.tracks[i].get("artist_id") for i in target
+                                        if self.tracks[i].get("artist_id") and not self.tracks[i].get("genre")))
+        for start in range(0, len(artist_ids), 50):
+            batch = artist_ids[start:start + 50]
+            try:
+                response = self.spotify_get("artists?" + urllib.parse.urlencode({"ids": ",".join(batch)}))
+            except (ValueError, urllib.error.URLError, TimeoutError):
+                break  # Spotify may return no genres or disallow this deprecated endpoint.
+            genres = {artist["id"]: artist["genres"][0] for artist in response.get("artists", [])
+                      if artist and artist.get("id") and artist.get("genres")}
+            with self.lock:
+                changed = False
+                for index in target:
+                    track = self.tracks[index]
+                    genre = genres.get(track.get("artist_id"))
+                    if genre and not track.get("genre"):
+                        track["genre"] = genre
+                        changed = True
+                if changed:
+                    self.save()
+
     def run_job(self, kind, target):
+        if kind == "wav":
+            with self.lock:
+                self.job["current"] = "Reading Spotify metadata"
+            self.enrich_metadata(target)
+        unavailable_in_row = 0
         for index in target:
             with self.lock:
                 if kind == "match" and self.pause_requested:
@@ -281,19 +380,28 @@ class App:
                         self.save()
                 else:
                     download_track(track, kind)
+                    unavailable_in_row = 0
                     with self.lock:
                         self.tracks[index]["status"] = "downloaded"
                         self.tracks[index]["error"] = ""
                         self.save()
             except Exception as error:
+                detail = re.sub(r"\x1b\[[0-9;]*m", "", str(error))
                 with self.lock:
                     if kind != "match" or not self.tracks[index].get("selected"):
                         self.tracks[index]["status"] = "error"
-                        self.tracks[index]["error"] = str(error)[:300]
-                    self.job["errors"].append(self.job["current"] + ": " + str(error)[:150])
+                        self.tracks[index]["error"] = detail[:300]
+                    self.job["errors"].append(self.job["current"] + ": " + detail[:150])
                     self.save()
+                if kind in ("wav", "mp3"):
+                    unavailable_in_row = unavailable_in_row + 1 if "Requested format is not available" in detail else 0
             with self.lock:
                 self.job["done"] += 1
+                if unavailable_in_row >= 3:
+                    self.job["paused"] = True
+                    self.job["errors"].append("YouTube returned no audio formats for three songs in a row. "
+                                              "Downloads stopped; retry after YouTube access recovers.")
+                    break
         with self.lock:
             self.job["running"] = False
             self.job["pausing"] = False
@@ -337,17 +445,22 @@ def download_track(track, extension):
     OUTPUT.mkdir(parents=True, exist_ok=True)
     final = OUTPUT / filename(track, extension)
     if final.exists() and final.stat().st_size > 0:
+        if extension == "wav":
+            write_wav_metadata(final, track)
         return
     stem = f'{safe_name(track["title"])} ({safe_name(track["artist"])})'.replace("%", "%%")
     template = str(OUTPUT / (stem + ".%(ext)s"))
     opts = {"format": "bestaudio/best", "outtmpl": template, "noplaylist": True,
             "quiet": True, "no_warnings": True, "overwrites": False,
+            "js_runtimes": {"deno": {}, "node": {}},
             "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": extension,
                                 "preferredquality": "192" if extension == "mp3" else "0"}]}
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download(["https://www.youtube.com/watch?v=" + selected])
     if not final.exists():
         raise ValueError("The audio file was not created.")
+    if extension == "wav":
+        write_wav_metadata(final, track)
 
 
 APP = App()
@@ -469,7 +582,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("Choose MP3 or WAV.")
                 with APP.lock:
                     target = [i for i, t in enumerate(APP.tracks) if t.get("selected") and
-                              not (OUTPUT / filename(t, extension)).exists()]
+                              (extension == "wav" or not (OUTPUT / filename(t, extension)).exists())]
                 APP.begin_job(extension, target)
                 self.json_response({"count": len(target)})
             else:
