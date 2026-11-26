@@ -88,6 +88,8 @@ def match_score(track, result):
         score += 0.18
     if artist and artist in candidate:
         score += 0.14
+    if re.search(r"\bofficial\b", candidate):
+        score += 0.22
     duration = result.get("duration")
     if duration and track.get("duration_ms"):
         delta = abs(duration * 1000 - track["duration_ms"])
@@ -118,6 +120,42 @@ class App:
                 self.tracks = data.get("tracks", [])
             except (OSError, ValueError):
                 pass
+
+    def rescore_saved_matches(self):
+        """Apply current ranking to saved auto picks without changing manual choices."""
+        with self.lock:
+            changed = False
+            for track in self.tracks:
+                candidates = track.get("candidates") or []
+                old_top_id = candidates[0].get("id") if candidates else None
+                source = track.get("selection_source")
+                if source is None and track.get("selected"):
+                    source = "auto" if track["selected"] == old_top_id and track.get("status") == "matched" else "manual"
+                    track["selection_source"] = source
+                    changed = True
+                for candidate in candidates:
+                    score = match_score(track, candidate)
+                    if candidate.get("score") != score:
+                        candidate["score"] = score
+                        changed = True
+                reordered = sorted(candidates, key=lambda item: item["score"], reverse=True)
+                if candidates != reordered:
+                    track["candidates"] = reordered
+                    changed = True
+                if source == "auto" and track.get("status") == "matched" and reordered:
+                    best = reordered[0]
+                    if best["score"] >= 0.62 and track.get("selected") != best["id"]:
+                        track["selected"] = best["id"]
+                        changed = True
+                elif not track.get("selected") and track.get("status") == "needs_review" and reordered:
+                    best = reordered[0]
+                    if best["score"] >= 0.62:
+                        track["selected"] = best["id"]
+                        track["selection_source"] = "auto"
+                        track["status"] = "matched"
+                        changed = True
+            if changed:
+                self.save()
 
     def save(self):
         OUTPUT.mkdir(parents=True, exist_ok=True)
@@ -181,7 +219,8 @@ class App:
                 artist = ", ".join(a.get("name", "") for a in artists if a.get("name")) or "Unknown artist"
                 tracks.append({"title": item["name"], "artist": artist,
                                "duration_ms": item.get("duration_ms"), "spotify_id": item.get("id"),
-                               "candidates": [], "selected": None, "status": "pending", "error": ""})
+                               "candidates": [], "selected": None, "selection_source": None,
+                               "status": "pending", "error": ""})
             offset += len(page.get("items", []))
             if offset >= page.get("total", 0) or not page.get("items"):
                 break
@@ -236,6 +275,7 @@ class App:
                         self.tracks[index]["candidates"] = candidates
                         if not self.tracks[index].get("selected"):
                             self.tracks[index]["selected"] = best["id"] if best and best["score"] >= 0.62 else None
+                            self.tracks[index]["selection_source"] = "auto" if self.tracks[index]["selected"] else None
                             self.tracks[index]["status"] = "matched" if self.tracks[index]["selected"] else "needs_review"
                         self.tracks[index]["error"] = ""
                         self.save()
@@ -418,6 +458,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("Choose a valid YouTube video.")
                 with APP.lock:
                     APP.tracks[index]["selected"] = selected
+                    APP.tracks[index]["selection_source"] = "manual"
                     APP.tracks[index]["status"] = "matched"
                     APP.tracks[index]["error"] = ""
                     APP.save()
@@ -440,6 +481,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     OUTPUT.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((HOST, PORT), Handler)
+    APP.rescore_saved_matches()
     APP.start_auto_match()
     webbrowser.open(f"http://{HOST}:{PORT}")
     print(f"Spotify Downloader: http://{HOST}:{PORT}", flush=True)

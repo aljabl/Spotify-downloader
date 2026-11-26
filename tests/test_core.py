@@ -16,7 +16,7 @@ def isolated_app():
 
 
 def sample_track(title="Example Song"):
-    return {"title": title, "artist": "Artist", "selected": None, "status": "pending",
+    return {"title": title, "artist": "Artist", "selected": None, "selection_source": None, "status": "pending",
             "candidates": [], "error": "", "duration_ms": 180000}
 
 
@@ -43,6 +43,25 @@ class CoreTests(unittest.TestCase):
         right = {"title": "Artist - Example Song (Official Audio)", "duration": 180}
         wrong = {"title": "Different Song cover", "duration": 450}
         self.assertGreater(match_score(track, right), match_score(track, wrong))
+
+    def test_match_prefers_official_title(self):
+        track = {"title": "Never Gonna Give You Up", "artist": "Rick Astley", "duration_ms": 212000}
+        plain = {"title": "Rick Astley - Never Gonna Give You Up (HQ Audio)", "duration": 212}
+        official = {"title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)", "duration": 214}
+        self.assertGreater(match_score(track, official), match_score(track, plain))
+
+    def test_rescore_updates_legacy_auto_pick_but_preserves_manual_pick(self):
+        with isolated_app() as app:
+            plain = {"id": "2rmYU0B3kCQ", "title": "Rick Astley - Never Gonna Give You Up (HQ Audio)", "duration": 212, "score": 1.326}
+            official = {"id": "dQw4w9WgXcQ", "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)", "duration": 214, "score": 1.162}
+            legacy = {"title": "Never Gonna Give You Up", "artist": "Rick Astley", "duration_ms": 212000,
+                      "candidates": [dict(plain), dict(official)], "selected": plain["id"], "status": "matched"}
+            manual = dict(legacy, candidates=[dict(plain), dict(official)], selection_source="manual")
+            app.tracks = [legacy, manual]
+            app.rescore_saved_matches()
+            self.assertEqual(app.tracks[0]["selected"], official["id"])
+            self.assertEqual(app.tracks[0]["selection_source"], "auto")
+            self.assertEqual(app.tracks[1]["selected"], plain["id"])
 
     def test_loading_playlist_starts_automatic_search(self):
         with isolated_app() as app:
