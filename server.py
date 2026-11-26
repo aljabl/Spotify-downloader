@@ -108,7 +108,9 @@ class App:
         self.playlist_title = ""
         self.tracks = []
         self.revision = 0
-        self.job = {"kind": None, "running": False, "current": "", "done": 0, "total": 0, "errors": []}
+        self.pause_requested = False
+        self.job = {"kind": None, "running": False, "paused": False, "pausing": False,
+                    "current": "", "done": 0, "total": 0, "errors": []}
         if STATE_FILE.exists():
             try:
                 data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
@@ -187,19 +189,43 @@ class App:
             self.playlist_title = details.get("name") or "Spotify playlist"
             self.tracks = tracks
             self.save()
+        self.start_auto_match()
         return len(tracks)
+
+    def start_auto_match(self):
+        with self.lock:
+            if self.job["running"]:
+                return 0
+            target = [i for i, track in enumerate(self.tracks)
+                      if track["status"] == "pending" and not track.get("selected")]
+        if target:
+            self.begin_job("match", target)
+        return len(target)
 
     def begin_job(self, kind, target):
         with self.lock:
             if self.job["running"]:
                 raise ValueError("Wait for the current job to finish.")
-            self.job = {"kind": kind, "running": True, "current": "", "done": 0,
-                        "total": len(target), "errors": []}
+            self.pause_requested = False
+            self.job = {"kind": kind, "running": bool(target), "paused": False, "pausing": False,
+                        "current": "", "done": 0, "total": len(target), "errors": []}
+        if not target:
+            return
         threading.Thread(target=self.run_job, args=(kind, target), daemon=True).start()
+
+    def pause_match(self):
+        with self.lock:
+            if not self.job["running"] or self.job["kind"] != "match":
+                raise ValueError("No YouTube search is running.")
+            self.pause_requested = True
+            self.job["pausing"] = True
 
     def run_job(self, kind, target):
         for index in target:
             with self.lock:
+                if kind == "match" and self.pause_requested:
+                    self.job["paused"] = True
+                    break
                 track = dict(self.tracks[index])
                 self.job["current"] = f'{track["title"]} — {track["artist"]}'
             try:
@@ -208,8 +234,9 @@ class App:
                     best = candidates[0] if candidates else None
                     with self.lock:
                         self.tracks[index]["candidates"] = candidates
-                        self.tracks[index]["selected"] = best["id"] if best and best["score"] >= 0.62 else None
-                        self.tracks[index]["status"] = "matched" if self.tracks[index]["selected"] else "needs_review"
+                        if not self.tracks[index].get("selected"):
+                            self.tracks[index]["selected"] = best["id"] if best and best["score"] >= 0.62 else None
+                            self.tracks[index]["status"] = "matched" if self.tracks[index]["selected"] else "needs_review"
                         self.tracks[index]["error"] = ""
                         self.save()
                 else:
@@ -220,14 +247,16 @@ class App:
                         self.save()
             except Exception as error:
                 with self.lock:
-                    self.tracks[index]["status"] = "error"
-                    self.tracks[index]["error"] = str(error)[:300]
+                    if kind != "match" or not self.tracks[index].get("selected"):
+                        self.tracks[index]["status"] = "error"
+                        self.tracks[index]["error"] = str(error)[:300]
                     self.job["errors"].append(self.job["current"] + ": " + str(error)[:150])
                     self.save()
             with self.lock:
                 self.job["done"] += 1
         with self.lock:
             self.job["running"] = False
+            self.job["pausing"] = False
             self.job["current"] = ""
 
 
@@ -375,6 +404,9 @@ class Handler(BaseHTTPRequestHandler):
                     target = [i for i, t in enumerate(APP.tracks) if t["status"] in ("pending", "needs_review", "error") and not t.get("selected")]
                 APP.begin_job("match", target)
                 self.json_response({"count": len(target)})
+            elif path == "/api/pause":
+                APP.pause_match()
+                self.json_response({"ok": True})
             elif path == "/api/choose":
                 index = data.get("index")
                 if type(index) is not int or index < 0 or index >= len(APP.tracks):
@@ -408,6 +440,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     OUTPUT.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((HOST, PORT), Handler)
+    APP.start_auto_match()
     webbrowser.open(f"http://{HOST}:{PORT}")
     print(f"Spotify Downloader: http://{HOST}:{PORT}", flush=True)
     try:
