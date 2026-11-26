@@ -89,8 +89,13 @@ $('one-off-form').addEventListener('submit', async event => {
   const button = event.submitter;
   button.disabled = true;
   try {
-    await action('/api/one-off', {url:$('one-off-url').value, title:$('one-off-title').value,
+    const started = await action('/api/one-off', {url:$('one-off-url').value, title:$('one-off-title').value,
       artist:$('one-off-artist').value, format:$('one-off-format').value}, () => 'One-off download started.');
+    if (started) {
+      $('one-off-url').value = '';
+      $('one-off-title').value = '';
+      $('one-off-artist').value = '';
+    }
   } finally { button.disabled = state?.one_off?.status === 'working' || state?.one_off?.status === 'downloading'; }
 });
 $('match').addEventListener('click', () => state?.job.running && state.job.kind === 'match' ?
