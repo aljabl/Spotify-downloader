@@ -8,7 +8,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from server import App, convert_to_alac, download_track, filename, match_score, playlist_id, safe_name, spotify_metadata, video_id, write_alac_metadata, write_wav_metadata, youtube_video_track
+from server import App, convert_to_alac, download_error, download_track, filename, match_score, playlist_id, safe_name, search_youtube, spotify_metadata, video_id, write_alac_metadata, write_wav_metadata, youtube_video_track
 
 
 @contextmanager
@@ -25,6 +25,32 @@ def sample_track(title="Example Song"):
 
 
 class CoreTests(unittest.TestCase):
+    def test_browser_setting_is_saved_and_used_for_all_youtube_requests(self):
+        with isolated_app() as app, patch("server.APP", app):
+            app.set_youtube_browser("firefox")
+            self.assertEqual(App().youtube_browser, "firefox")
+            self.assertEqual(app.snapshot()["youtube_browser"], "firefox")
+            with patch("yt_dlp.YoutubeDL") as youtube:
+                youtube.return_value.__enter__.return_value.extract_info.return_value = {"entries": []}
+                search_youtube(sample_track())
+                self.assertEqual(youtube.call_args.args[0]["cookiesfrombrowser"], ("firefox",))
+                youtube.return_value.__enter__.return_value.extract_info.return_value = {"id": "YE7VzlLtp-4"}
+                youtube_video_track("YE7VzlLtp-4")
+                self.assertEqual(youtube.call_args.args[0]["cookiesfrombrowser"], ("firefox",))
+                with patch("server.shutil.which", return_value="/usr/bin/ffmpeg"):
+                    for extension in ("mp3", "alac"):
+                        with self.assertRaises(ValueError):
+                            download_track(dict(sample_track(), selected="YE7VzlLtp-4"), extension)
+                        self.assertEqual(youtube.call_args.args[0]["cookiesfrombrowser"], ("firefox",))
+            app.set_youtube_browser("")
+            self.assertEqual(App().youtube_browser, "")
+            with self.assertRaises(ValueError):
+                app.set_youtube_browser("unknown")
+
+    def test_bot_challenge_gives_browser_instructions(self):
+        message = download_error("ERROR: [youtube] Sign in to confirm you're not a bot. Use --cookies-from-browser")
+        self.assertIn("choose that browser under YouTube access", message)
+
     def test_spotify_playlist_track_metadata(self):
         item = {"album": {"name": "The Album", "release_date": "2020-03"},
                 "artists": [{"id": "artist-id", "name": "Artist"}], "track_number": 7}
@@ -133,16 +159,53 @@ class CoreTests(unittest.TestCase):
             convert.assert_called_once_with(source, path, track)
             self.assertFalse(source.exists())
 
-    def test_repeated_unavailable_formats_stop_download_job(self):
+    def test_four_consecutive_download_failures_pause_job(self):
         with isolated_app() as app:
-            app.tracks = [dict(sample_track(), selected="YE7VzlLtp-4", status="matched") for _ in range(4)]
-            app.job.update({"kind": "wav", "running": True, "total": 4})
-            with patch.object(app, "enrich_metadata"), patch("server.download_track", side_effect=ValueError("Requested format is not available")):
-                app.run_job("wav", [0, 1, 2, 3])
-            self.assertEqual(app.job["done"], 3)
+            app.tracks = [dict(sample_track(), selected="YE7VzlLtp-4", status="matched") for _ in range(5)]
+            app.job.update({"kind": "wav", "running": True, "total": 5})
+            with patch.object(app, "enrich_metadata"), patch("server.download_track", side_effect=ValueError("YouTube blocked this video")) as download:
+                app.run_job("wav", range(5))
+            self.assertEqual(download.call_count, 4)
+            self.assertEqual(app.job["done"], 4)
             self.assertTrue(app.job["paused"])
-            self.assertEqual(app.tracks[3]["status"], "matched")
+            self.assertEqual(len(app.job["errors"]), 4)
+            self.assertIn("Four downloads failed in a row", app.job["pause_reason"])
+            self.assertEqual(app.tracks[4]["status"], "matched")
             self.assertEqual(app.job["last_result"]["status"], "error")
+
+    def test_success_resets_consecutive_download_failures(self):
+        with isolated_app() as app:
+            app.tracks = [dict(sample_track(), selected="YE7VzlLtp-4", status="matched") for _ in range(7)]
+            app.job.update({"kind": "mp3", "running": True, "total": 7})
+            failures = [ValueError("Unavailable"), RuntimeError("Blocked"), ValueError("Timed out")]
+            with patch("server.download_track", side_effect=failures + [None] + failures) as download:
+                app.run_job("mp3", range(7))
+            self.assertEqual(download.call_count, 7)
+            self.assertEqual(app.job["done"], 7)
+            self.assertFalse(app.job["paused"])
+            self.assertEqual(app.job["pause_reason"], "")
+
+    def test_existing_downloads_show_resume_status_until_new_download(self):
+        with isolated_app() as app:
+            app.tracks = [dict(sample_track(title), selected="YE7VzlLtp-4", status="matched")
+                          for title in ("First", "Second")]
+            existing = server.OUTPUT / filename(app.tracks[0], "wav")
+            existing.parent.mkdir(parents=True)
+            existing.write_bytes(b"existing wav")
+            app.job.update({"kind": "wav", "running": True, "total": 2})
+            observed = []
+            def download(track, extension):
+                observed.append((app.job["current"], app.job["last_result"]))
+            with patch.object(app, "enrich_metadata"), patch("server.download_track", side_effect=download):
+                app.run_job("wav", [0, 1])
+            self.assertEqual(observed[0][0], "Finding where we left off...")
+            self.assertEqual(observed[1][0], "Second — Artist")
+            self.assertEqual(observed[1][1]["status"], "existing")
+            self.assertEqual(app.job["last_result"]["status"], "success")
+            app.job.update({"running": True, "done": 0, "errors": [], "last_result": None})
+            with patch.object(app, "enrich_metadata"), patch("server.download_track", side_effect=ValueError("Tag failed")):
+                app.run_job("wav", [0])
+            self.assertTrue(app.job["errors"][0].startswith("First — Artist: Tag failed"))
 
     def test_tag_job_does_not_download_from_youtube(self):
         with isolated_app() as app:

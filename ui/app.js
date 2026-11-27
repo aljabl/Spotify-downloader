@@ -47,6 +47,7 @@ function render() {
   const ignoredCount = state.tracks.filter(t => t.ignored).length;
   $('playlist-summary').textContent = state.playlist_title ? `${state.playlist_title} · ${state.tracks.length} songs${ignoredCount ? ` · ${ignoredCount} ignored` : ''}` : '';
   $('folder').textContent = `Output folder: ${state.output_dir}`;
+  if (document.activeElement !== $('youtube-browser')) $('youtube-browser').value = state.youtube_browser || '';
   const job = state.job;
   const oneOff = state.one_off || {status:'idle'};
   if (job.id !== lastJobId) {
@@ -57,7 +58,10 @@ function render() {
   }
   if (job.last_result && job.last_result.sequence !== lastResultSequence) {
     lastResultSequence = job.last_result.sequence;
-    if (job.kind !== 'match') {
+    if (job.last_result.status === 'existing') {
+      resultFlash = null;
+      clearTimeout(resultTimer);
+    } else if (job.kind !== 'match') {
       resultFlash = job.last_result;
       clearTimeout(resultTimer);
       resultTimer = setTimeout(() => { resultFlash = null; render(); }, 900);
@@ -78,15 +82,16 @@ function render() {
   $('match').disabled = (!searching && !state.tracks.some(t => !t.ignored)) || job.pausing || (job.running && !searching);
   $('download').disabled = state.job.running || !state.tracks.some(t => t.selected && !t.ignored);
   $('tag-wav').disabled = state.job.running || !state.tracks.some(t => !t.ignored);
-  const stopReason = job.errors.find(error => error.startsWith('YouTube returned no audio formats'));
+  const stopReason = job.pause_reason;
   const jobText = job.kind ? `${job.pausing ? 'Pausing' : job.running ? 'Working' : job.paused ? 'Paused' : 'Finished'} · ${job.kind === 'match' ? 'Finding YouTube matches' : job.kind === 'tag' ? 'Updating WAV tags' : `Downloading ${job.kind.toUpperCase()}`} · ${job.done}/${job.total}${job.current ? ` · ${job.current}` : ''}${job.errors.length ? ` · ${job.errors.length} errors` : ''}${stopReason ? ` · ${stopReason}` : ''}` : '';
   $('job').hidden = job.kind !== 'match';
   $('job').textContent = job.kind === 'match' ? jobText : '';
   const rows = [];
   if (job.kind && job.kind !== 'match') {
-    const resultText = resultFlash?.status === 'success' ? `${job.kind === 'tag' ? 'Updated tags' : 'Downloaded'} · ${resultFlash.title} · ${job.done}/${job.total}` :
+    const findingWhereLeftOff = job.running && job.current === 'Finding where we left off...';
+    const resultText = findingWhereLeftOff ? jobText : resultFlash?.status === 'success' ? `${job.kind === 'tag' ? 'Updated tags' : 'Downloaded'} · ${resultFlash.title} · ${job.done}/${job.total}` :
       resultFlash?.status === 'error' ? `Failed · ${resultFlash.title} · ${job.done}/${job.total}` : jobText;
-    const icon = resultFlash ? resultFlash.status : job.running ? 'loading' : job.errors.length ? 'error' : 'success';
+    const icon = findingWhereLeftOff ? 'loading' : resultFlash ? resultFlash.status : job.running ? 'loading' : job.errors.length ? 'error' : 'success';
     rows.push(progressRow(resultText, icon));
   }
   const oneOffProgress = oneOff.status === 'working' ? 'Reading YouTube details for one-off download' :
@@ -100,6 +105,15 @@ function render() {
   }
   $('download-job').replaceChildren(...rows);
   $('download-job').hidden = !rows.length;
+  const downloadErrors = ['mp3', 'wav', 'alac'].includes(job.kind) ? [...job.errors] : [];
+  if (oneOff.status === 'error') downloadErrors.push(`One-off download: ${oneOff.error}`);
+  $('download-error-count').textContent = downloadErrors.length;
+  $('download-error-list').replaceChildren(...downloadErrors.map(error => {
+    const item = document.createElement('li');
+    item.textContent = error;
+    return item;
+  }));
+  $('download-errors').hidden = !downloadErrors.length;
   const q = $('filter').value.trim().toLowerCase();
   const filter = $('status-filter').value;
   const found = state.tracks.map((track,index) => ({track,index})).filter(({track}) =>
@@ -133,6 +147,8 @@ async function refresh(force = false) {
 }
 
 $('playlist-form').addEventListener('submit', async event => {event.preventDefault(); const button = event.submitter; button.disabled = true; try { await action('/api/playlist',{url:$('playlist-url').value}, r => `Loaded ${r.count} songs. YouTube matching started automatically.`, 'Loading playlist from Spotify…'); } finally {button.disabled = false;}});
+$('save-youtube-browser').addEventListener('click', () => action('/api/youtube-browser',
+  {browser:$('youtube-browser').value}, () => 'YouTube access setting saved. Retry the download.'));
 $('one-off-form').addEventListener('submit', async event => {
   event.preventDefault();
   const button = event.submitter;

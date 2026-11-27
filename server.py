@@ -28,6 +28,25 @@ STATE_FILE = OUTPUT / ".state.json"
 REDIRECT_URI = f"http://{HOST}:{PORT}/callback"
 VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 PLAYLIST_ID = re.compile(r"^[A-Za-z0-9]{22}$")
+YOUTUBE_BROWSERS = {"", "safari", "chrome", "firefox", "brave", "edge", "chromium", "opera", "vivaldi"}
+
+
+def youtube_options(options):
+    """Use the selected local browser session for every YouTube request."""
+    with APP.lock:
+        browser = APP.youtube_browser
+    if browser:
+        return {**options, "cookiesfrombrowser": (browser,)}
+    return options
+
+
+def download_error(error):
+    detail = re.sub(r"\x1b\[[0-9;]*m", "", str(error))
+    if "Sign in to confirm you’re not a bot" in detail or "Sign in to confirm you're not a bot" in detail:
+        return ("YouTube asked for a signed-in session. Sign in to YouTube in your browser, "
+                "choose that browser under YouTube access, save it, and retry. "
+                "If a browser is already selected, try another signed-in browser.")
+    return detail[:300]
 
 
 def playlist_id(value):
@@ -75,6 +94,14 @@ def filename(track, extension):
     title = safe_name(track["title"])
     artist = safe_name(track["artist"])
     return f"{title} ({artist}).{'m4a' if extension == 'alac' else extension}"
+
+
+def already_downloaded(track, extension):
+    path = OUTPUT / filename(track, extension)
+    try:
+        return path.is_file() and path.stat().st_size > 0
+    except OSError:
+        return False
 
 
 def spotify_metadata(item):
@@ -176,11 +203,13 @@ class App:
         self.token = None
         self.playlist_title = ""
         self.playlist_id = None
+        self.youtube_browser = ""
         self.tracks = []
         self.revision = 0
         self.pause_requested = False
         self.job = {"id": None, "kind": None, "running": False, "paused": False, "pausing": False,
-                    "current": "", "done": 0, "total": 0, "errors": [], "last_result": None}
+                    "current": "", "done": 0, "total": 0, "errors": [], "last_result": None,
+                    "pause_reason": ""}
         self.one_off = {"status": "idle", "filename": "", "error": ""}
         if STATE_FILE.exists():
             try:
@@ -188,6 +217,8 @@ class App:
                 self.playlist_title = data.get("playlist_title", "")
                 self.playlist_id = data.get("playlist_id")
                 self.tracks = data.get("tracks", [])
+                browser = data.get("youtube_browser", "")
+                self.youtube_browser = browser if type(browser) is str and browser in YOUTUBE_BROWSERS else ""
             except (OSError, ValueError):
                 pass
 
@@ -233,7 +264,8 @@ class App:
         OUTPUT.mkdir(parents=True, exist_ok=True)
         temp = STATE_FILE.with_suffix(".tmp")
         temp.write_text(json.dumps({"playlist_title": self.playlist_title, "playlist_id": self.playlist_id,
-                                    "tracks": self.tracks}, ensure_ascii=False), encoding="utf-8")
+                                    "tracks": self.tracks, "youtube_browser": self.youtube_browser},
+                                   ensure_ascii=False), encoding="utf-8")
         temp.replace(STATE_FILE)
         self.revision += 1
 
@@ -242,7 +274,17 @@ class App:
             return {"connected": bool(self.token), "playlist_title": self.playlist_title,
                     "tracks": self.tracks, "job": self.job, "revision": self.revision,
                     "one_off": self.one_off,
+                    "youtube_browser": self.youtube_browser,
                     "output_dir": str(OUTPUT)}
+
+    def set_youtube_browser(self, browser):
+        if type(browser) is not str or browser not in YOUTUBE_BROWSERS:
+            raise ValueError("Choose a supported browser.")
+        with self.lock:
+            if self.job["running"] or self.one_off["status"] in ("working", "downloading"):
+                raise ValueError("Wait for the current YouTube task to finish before changing browsers.")
+            self.youtube_browser = browser
+            self.save()
 
     def spotify_token(self):
         with self.lock:
@@ -334,7 +376,8 @@ class App:
             self.pause_requested = False
             self.job = {"id": secrets.token_hex(6), "kind": kind, "running": bool(target),
                         "paused": False, "pausing": False, "current": "", "done": 0,
-                        "total": len(target), "errors": [], "last_result": None}
+                        "total": len(target), "errors": [], "last_result": None,
+                        "pause_reason": ""}
         if not target:
             return
         threading.Thread(target=self.run_job, args=(kind, target), daemon=True).start()
@@ -374,7 +417,7 @@ class App:
                 self.one_off = {"status": "existing" if existed else "done", "filename": path.name, "error": ""}
                 self.revision += 1
         except Exception as error:
-            detail = re.sub(r"\x1b\[[0-9;]*m", "", str(error))[:300]
+            detail = download_error(error)
             with self.lock:
                 self.one_off = {"status": "error", "filename": "", "error": detail}
                 self.revision += 1
@@ -442,7 +485,7 @@ class App:
             with self.lock:
                 self.job["current"] = "Reading Spotify metadata"
             self.enrich_metadata(target)
-        unavailable_in_row = 0
+        download_failures_in_row = 0
         for index in target:
             with self.lock:
                 if kind == "match" and self.pause_requested:
@@ -452,8 +495,10 @@ class App:
                     self.job["total"] -= 1
                     continue
                 track = dict(self.tracks[index])
-                self.job["current"] = f'{track["title"]} — {track["artist"]}'
-            outcome = "success"
+                track_label = f'{track["title"]} — {track["artist"]}'
+                existing = kind in ("mp3", "wav", "alac") and already_downloaded(track, kind)
+                self.job["current"] = "Finding where we left off..." if existing else track_label
+            outcome = "existing" if existing else "success"
             try:
                 if kind == "match":
                     candidates = search_youtube(track)
@@ -475,31 +520,31 @@ class App:
                         self.save()
                 else:
                     download_track(track, kind)
-                    unavailable_in_row = 0
+                    download_failures_in_row = 0
                     with self.lock:
                         self.tracks[index]["status"] = "downloaded"
                         self.tracks[index]["error"] = ""
                         self.save()
             except Exception as error:
                 outcome = "error"
-                detail = re.sub(r"\x1b\[[0-9;]*m", "", str(error))
+                detail = download_error(error)
                 with self.lock:
                     if not self.tracks[index].get("ignored") and (kind != "match" or not self.tracks[index].get("selected")):
                         self.tracks[index]["status"] = "error"
                         self.tracks[index]["error"] = detail[:300]
-                    self.job["errors"].append(self.job["current"] + ": " + detail[:150])
+                    self.job["errors"].append(track_label + ": " + detail[:300])
                     self.save()
                 if kind in ("wav", "mp3", "alac"):
-                    unavailable_in_row = unavailable_in_row + 1 if "Requested format is not available" in detail else 0
+                    download_failures_in_row += 1
             with self.lock:
                 self.job["done"] += 1
                 self.job["last_result"] = {"sequence": self.job["done"],
-                                           "title": f'{track["title"]} — {track["artist"]}',
+                                           "title": track_label,
                                            "status": outcome}
-                if unavailable_in_row >= 3:
+                if download_failures_in_row > 3:
                     self.job["paused"] = True
-                    self.job["errors"].append("YouTube returned no audio formats for three songs in a row. "
-                                              "Downloads stopped; retry after YouTube access recovers.")
+                    self.job["pause_reason"] = ("Four downloads failed in a row. Downloads paused; "
+                                                "check the errors and retry when ready.")
                     break
         with self.lock:
             self.job["running"] = False
@@ -520,7 +565,7 @@ def post_form(url, fields):
 def search_youtube(track):
     import yt_dlp
     query = f'{track["artist"]} {track["title"]} official audio'
-    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "extract_flat": "in_playlist", "skip_download": True}) as ydl:
+    with yt_dlp.YoutubeDL(youtube_options({"quiet": True, "no_warnings": True, "extract_flat": "in_playlist", "skip_download": True})) as ydl:
         result = ydl.extract_info("ytsearch3:" + query, download=False)
     candidates = []
     for entry in (result or {}).get("entries", []):
@@ -536,8 +581,8 @@ def search_youtube(track):
 
 def youtube_video_track(selected, title="", artist=""):
     import yt_dlp
-    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": True,
-                           "skip_download": True, "js_runtimes": {"deno": {}, "node": {}}}) as ydl:
+    with yt_dlp.YoutubeDL(youtube_options({"quiet": True, "no_warnings": True, "noplaylist": True,
+                                           "skip_download": True, "js_runtimes": {"deno": {}, "node": {}}})) as ydl:
         info = ydl.extract_info("https://www.youtube.com/watch?v=" + selected, download=False)
     if not info or info.get("id") != selected:
         raise ValueError("Could not read details for that YouTube video.")
@@ -560,7 +605,7 @@ def download_track(track, extension):
         raise ValueError("Choose a YouTube match first.")
     OUTPUT.mkdir(parents=True, exist_ok=True)
     final = OUTPUT / filename(track, extension)
-    if final.exists() and final.stat().st_size > 0:
+    if already_downloaded(track, extension):
         if extension == "wav":
             write_wav_metadata(final, track)
         elif extension == "alac":
@@ -575,7 +620,7 @@ def download_track(track, extension):
         opts = {"format": "bestaudio/best", "outtmpl": template, "noplaylist": True,
                 "quiet": True, "no_warnings": True, "overwrites": False,
                 "js_runtimes": {"deno": {}, "node": {}}}
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with yt_dlp.YoutubeDL(youtube_options(opts)) as ydl:
             info = ydl.extract_info("https://www.youtube.com/watch?v=" + selected, download=True)
         downloads = (info or {}).get("requested_downloads") or []
         source_name = (downloads[0].get("filepath") if downloads else None) or (info or {}).get("filepath")
@@ -593,7 +638,7 @@ def download_track(track, extension):
             "js_runtimes": {"deno": {}, "node": {}},
             "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": extension,
                                 **({"preferredquality": "192"} if extension == "mp3" else {})}]}
-    with yt_dlp.YoutubeDL(opts) as ydl:
+    with yt_dlp.YoutubeDL(youtube_options(opts)) as ydl:
         ydl.download(["https://www.youtube.com/watch?v=" + selected])
     if not final.exists():
         raise ValueError("The audio file was not created.")
@@ -690,6 +735,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/playlist":
                 count = APP.load_playlist(data.get("url", ""))
                 self.json_response({"count": count})
+            elif path == "/api/youtube-browser":
+                APP.set_youtube_browser(data.get("browser"))
+                self.json_response({"ok": True})
             elif path == "/api/match":
                 with APP.lock:
                     target = [i for i, t in enumerate(APP.tracks) if t["status"] in ("pending", "needs_review", "error")

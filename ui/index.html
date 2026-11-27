@@ -13,6 +13,13 @@
     <header class="topbar"><div class="brand"><span class="mark">↓</span><span>Spotify Downloader</span></div><span class="local">Local app</span></header>
     <section class="hero"><h1>Spotify Downloader</h1><p>Download a single YouTube video or load a Spotify playlist, then save the audio as MP3, WAV, or ALAC.</p></section>
     <div id="notice" class="notice" role="status" hidden></div>
+    <details class="card" id="youtube-access">
+      <summary class="section-header"><h2>YouTube access</h2></summary>
+      <div class="section-content"><p>If YouTube asks you to sign in to confirm you are not a bot, sign in to YouTube in a browser on this Mac, then select it here. The app reads that browser's cookies locally when contacting YouTube.</p>
+        <div class="row"><label class="format">Browser <select id="youtube-browser"><option value="">No browser cookies</option><option value="safari">Safari</option><option value="chrome">Chrome</option><option value="firefox">Firefox</option><option value="brave">Brave</option><option value="edge">Edge</option><option value="chromium">Chromium</option><option value="opera">Opera</option><option value="vivaldi">Vivaldi</option></select></label><button id="save-youtube-browser" class="button secondary" type="button">Save YouTube access</button></div>
+        <p class="small">Only the browser choice is saved. yt-dlp reads cookies into the local app when needed; the app does not create a cookie file. You can return to “No browser cookies” at any time.</p>
+      </div>
+    </details>
     <details class="card" open>
       <summary class="section-header"><h2>Download one song</h2></summary>
       <div class="section-content"><p>Paste a YouTube video link. Spotify sign-in is not needed. Title and artist are optional; when left blank, the app uses the video's available details.</p>
@@ -51,6 +58,10 @@
       <div class="section-content"><p>Files use the name <strong>song title (artist)</strong>. Playlist WAV and ALAC files include available Spotify title, artist, album, release date, track number, and genre tags.</p>
       <div class="row"><label class="format">Format <select id="format"><option value="mp3">MP3 · smaller files</option><option value="wav">WAV · larger files</option><option value="alac">ALAC (.m4a) · Apple Lossless</option></select></label><button id="download" class="button">Download selected matches</button><button id="tag-wav" class="button secondary">Update existing WAV tags</button></div>
       <div id="download-job" class="job" role="status" hidden></div>
+      <details id="download-errors" class="download-errors" hidden>
+        <summary>Failed downloads (<span id="download-error-count">0</span>)</summary>
+        <ul id="download-error-list"></ul>
+      </details>
       <p id="folder" class="muted"></p><p class="small">Download only audio you have permission to save. YouTube availability and match quality can vary. Converting compressed audio to WAV or ALAC cannot add detail to the source.</p>
       </div>
     </details>
